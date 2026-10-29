@@ -1,0 +1,6 @@
+; ROYAL ORDER 메일 인증 기록 (Resend, mail.astrelgames.com)
+; Cloudflare > astrelgames.com > DNS > Records > Import and Export > Import 에서 이 파일 선택
+; "Proxy imported DNS records" 체크는 끄고 가져오기
+resend._domainkey.mail.astrelgames.com. 3600 IN TXT "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCvsV2W21nlgKq+wLybcx/d8Z2fVud08DJ3NzF9Ea29BmBvoyNZaPBfn5iK6UOkSmVJCgrDREcO7fXEboA2ZDO6VFvC+oGuTAzf7UmODdhSMVemVaLPV0o9b6I50s38t1SBvqW5w88v8iAcfpZ9rezVWrZNX9qZXQSawFm74hweeQIDAQAB"
+rsend.mail.astrelgames.com. 3600 IN CNAME rsend-apne1.forge.rmta.net.
+send.mail.astrelgames.com. 3600 IN CNAME send.forge.rmta.net.

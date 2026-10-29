@@ -1,0 +1,88 @@
+using System;
+using System.IO;
+using UnityEditor;
+using UnityEditor.Build.Reporting;
+using UnityEngine;
+
+namespace KnifeWar.Diagnostics
+{
+    /// <summary>
+    /// 원격 작업용 명령 파일. 유니티가 켜져 있으면 2초마다 Logs/claude_cmd.txt 를 확인해 한 줄씩 실행하고 지운다.
+    /// 결과는 Logs/claude_console.txt 에 남는다. (화면을 직접 조작하지 않고 새로고침·빌드를 하기 위함)
+    ///   refresh        — 바뀐 코드 다시 불러오기 (컴파일)
+    ///   build_windows  — Builds/Client/KnifeWar.exe
+    ///   build_linux    — Builds/LinuxServer/KnifeWarServer.x86_64 (헤드리스 데디 서버)
+    /// 게임 코드에 의존하지 않아서 게임 코드가 컴파일 실패해도 동작한다.
+    /// </summary>
+    [InitializeOnLoad]
+    static class ClaudeCommands
+    {
+        static readonly string CmdPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Logs", "claude_cmd.txt"));
+        const string ScenePath = "Assets/KnifeWar/Scenes/Game.unity";
+        static double _next;
+
+        static ClaudeCommands()
+        {
+            EditorApplication.update -= Poll;
+            EditorApplication.update += Poll;
+        }
+
+        static void Poll()
+        {
+            if (EditorApplication.timeSinceStartup < _next) return;
+            _next = EditorApplication.timeSinceStartup + 2.0;
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating || EditorApplication.isPlayingOrWillChangePlaymode) return;
+            if (!File.Exists(CmdPath)) return;
+
+            string[] lines;
+            try { lines = File.ReadAllLines(CmdPath); File.Delete(CmdPath); }
+            catch { return; }
+
+            foreach (var raw in lines)
+            {
+                string cmd = raw.Trim().ToLowerInvariant();
+                if (cmd.Length == 0) continue;
+                Debug.Log($"[claude-cmd] {cmd}");
+                try
+                {
+                    switch (cmd)
+                    {
+                        case "refresh":
+                            AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+                            break;
+                        case "build_windows":
+                            Build(BuildTarget.StandaloneWindows64, "Builds/Client/KnifeWar.exe", false);
+                            break;
+                        case "build_linux":
+                            Build(BuildTarget.StandaloneLinux64, "Builds/LinuxServer/KnifeWarServer.x86_64", true);
+                            break;
+                        default:
+                            Debug.LogWarning($"[claude-cmd] 모르는 명령: {cmd}");
+                            break;
+                    }
+                }
+                catch (Exception e) { Debug.LogError($"[claude-cmd] {cmd} 실패: {e.Message}"); }
+            }
+        }
+
+        static void Build(BuildTarget target, string path, bool server)
+        {
+            if (!File.Exists(ScenePath)) { Debug.LogError("[claude-cmd] 게임 씬이 없음"); return; }
+            var options = new BuildPlayerOptions
+            {
+                scenes = new[] { ScenePath },
+                locationPathName = path,
+                target = target,
+                targetGroup = BuildTargetGroup.Standalone,
+                options = BuildOptions.None,
+            };
+            if (server) options.subtarget = (int)StandaloneBuildSubtarget.Server;
+            var report = BuildPipeline.BuildPlayer(options);
+            var s = report.summary;
+            if (s.result == BuildResult.Succeeded)
+                Debug.Log($"[claude-cmd] 빌드 성공 {path} ({s.totalSize / (1024 * 1024)}MB, {s.totalTime.TotalSeconds:0}s)");
+            else
+                Debug.LogError($"[claude-cmd] 빌드 실패 {path}: {s.result}, 오류 {s.totalErrors}개");
+        }
+    }
+}

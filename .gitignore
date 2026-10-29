@@ -44,3 +44,11 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 .DS_Store
 Thumbs.db
+
+# ROYAL ORDER
+Deploy/secrets.env
+Backend/**/bin/
+Backend/**/obj/
+!Backend/**/*.csproj
+/[Bb]uilds/
+_staged/

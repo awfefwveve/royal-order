@@ -1,0 +1,19 @@
+{
+    "name": "KnifeWar.Bench",
+    "rootNamespace": "KnifeWar.Bench",
+    "references": [
+        "KnifeWar.Core",
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

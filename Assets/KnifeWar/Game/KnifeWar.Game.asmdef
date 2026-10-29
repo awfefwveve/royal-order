@@ -1,0 +1,19 @@
+{
+    "name": "KnifeWar.Game",
+    "rootNamespace": "KnifeWar.Game",
+    "references": [
+        "KnifeWar.Core",
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>KnifeWar.Backend</RootNamespace>
+    <!-- 기본 .NET 런타임만 사용 (ASP.NET Core 불필요). .NET 8이 없고 9/10만 있어도 실행 -->
+    <RollForward>Major</RollForward>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- 상용: dotnet publish -c Release -p:UsePostgres=true -->
+  <PropertyGroup Condition="'$(UsePostgres)' == 'true'">
+    <DefineConstants>$(DefineConstants);POSTGRES</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UsePostgres)' == 'true'">
+    <PackageReference Include="Npgsql" Version="8.0.5" />
+  </ItemGroup>
+</Project>

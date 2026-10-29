@@ -1,0 +1,19 @@
+{
+    "name": "KnifeWar.Editor",
+    "rootNamespace": "KnifeWar.EditorTools",
+    "references": [
+        "KnifeWar.Bench",
+        "KnifeWar.Game"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

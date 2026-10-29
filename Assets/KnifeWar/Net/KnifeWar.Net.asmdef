@@ -1,0 +1,21 @@
+{
+    "name": "KnifeWar.Net",
+    "rootNamespace": "KnifeWar.Net",
+    "references": [
+        "KnifeWar.Core",
+        "KnifeWar.Game",
+        "Unity.Networking.Transport",
+        "Unity.Collections",
+        "Unity.Burst",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
