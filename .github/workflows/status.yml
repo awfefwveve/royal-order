@@ -1,0 +1,37 @@
+name: 사내 작업장에 상태 보내기
+# 커밋·이슈·마일스톤이 바뀌면 사내 작업장 로비 총괄판으로 보내요.
+# 필요한 것: Settings → Secrets → Actions 에 ASTREL_HOOK (사내 작업장 → 로비 → 연결 설정에서 받기)
+on:
+  push:
+    branches: [main]
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled, milestoned, demilestoned, assigned]
+  milestone:
+    types: [created, edited, closed, opened, deleted]
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: read
+concurrency:
+  group: status
+  cancel-in-progress: true
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 보고 스크립트 받기
+        run: curl -fsSL https://work.astrelgames.com/astrel-report.mjs -o "$RUNNER_TEMP/astrel-report.mjs"
+      - name: 보내기
+        run: node "$RUNNER_TEMP/astrel-report.mjs"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASTREL_HOOK: ${{ secrets.ASTREL_HOOK }}

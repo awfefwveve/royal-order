@@ -1,0 +1,40 @@
+{
+  "labels": [
+    {
+      "name": "기획",
+      "color": "f2a93b",
+      "description": "기획서·규칙·숫자"
+    },
+    {
+      "name": "프로그래밍",
+      "color": "2e9e6b",
+      "description": "코드·네트워크·툴"
+    },
+    {
+      "name": "아트",
+      "color": "e5534b",
+      "description": "모델·텍스처·UI·애니메이션"
+    },
+    {
+      "name": "버그",
+      "color": "b60205",
+      "description": "잘못 동작하는 것"
+    },
+    {
+      "name": "치명",
+      "color": "5c0000",
+      "description": "판이 안 돌아가는 버그"
+    },
+    {
+      "name": "다음 후보",
+      "color": "bfbfbf",
+      "description": "이번 마일스톤 범위 밖"
+    }
+  ],
+  "milestones": [
+    {
+      "title": "M1",
+      "description": "목표: (끝나면 무엇을 보여줄 수 있나)\n들어감: \n안 들어감: \n완료 기준: "
+    }
+  ]
+}

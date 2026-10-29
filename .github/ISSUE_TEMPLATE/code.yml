@@ -1,0 +1,14 @@
+name: 프로그래밍
+description: 코드·네트워크·툴
+labels: ["프로그래밍"]
+body:
+  - type: textarea
+    attributes:
+      label: 할 일
+      description: 끝나면 무엇이 되어 있나요?
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: 마감
+      description: 예) 2026-11-08 (오른쪽 Milestone 도 꼭 고르세요)

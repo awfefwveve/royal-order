@@ -1,0 +1,30 @@
+name: 라벨·마일스톤 맞추기
+on:
+  push:
+    branches: [main]
+    paths: [".github/project.json", ".github/workflows/setup.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 라벨과 마일스톤 만들기 (이미 있으면 건너뜀)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          R=${{ github.repository }}
+          jq -c '.labels[]' .github/project.json | while read -r l; do
+            n=$(jq -r .name <<<"$l"); c=$(jq -r .color <<<"$l"); d=$(jq -r .description <<<"$l")
+            gh label create "$n" --repo "$R" --color "$c" --description "$d" --force
+          done
+          have=$(gh api "repos/$R/milestones?state=all&per_page=100" --jq '.[].title')
+          jq -c '.milestones[]' .github/project.json | while read -r m; do
+            t=$(jq -r .title <<<"$m")
+            if ! grep -Fxq "$t" <<<"$have"; then
+              gh api "repos/$R/milestones" -f title="$t" -f description="$(jq -r .description <<<"$m")" >/dev/null && echo "만듦: $t"
+            fi
+          done

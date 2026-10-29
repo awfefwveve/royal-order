@@ -1,0 +1,14 @@
+name: 아트
+description: 모델·텍스처·UI·애니메이션
+labels: ["아트"]
+body:
+  - type: textarea
+    attributes:
+      label: 할 일
+      description: 끝나면 무엇이 되어 있나요?
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: 마감
+      description: 예) 2026-11-08 (오른쪽 Milestone 도 꼭 고르세요)

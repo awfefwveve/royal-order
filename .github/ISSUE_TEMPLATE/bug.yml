@@ -1,0 +1,18 @@
+name: 버그
+description: 잘못 동작하는 것
+labels: ["버그"]
+body:
+  - type: dropdown
+    attributes:
+      label: 심각도
+      options: ["치명 (판이 안 돌아감)", "큼", "작음"]
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 다시 나오게 하는 법
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: 버전 / 빌드
