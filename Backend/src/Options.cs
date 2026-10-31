@@ -28,6 +28,10 @@ public sealed class ClientOptions
     public string Notice { get; set; } = "";      // 메뉴에 띄울 공지 (점검 안내 등)
     public bool Maintenance { get; set; }          // 점검 중: 로그인·매칭 막음
     public string PatchDir { get; set; } = "";     // 개발용: 이 폴더를 /patch/ 로 직접 제공 (예: ../../Builds/Patch)
+    // 약관·개인정보처리방침: 내용을 바꾸면 버전을 올린다 → 다음 로그인 때 모두 다시 동의
+    public string TermsVersion { get; set; } = "2026-11";
+    public string TermsUrl { get; set; } = "https://astrelgames.com/terms";
+    public string PrivacyUrl { get; set; } = "https://astrelgames.com/privacy";
 }
 
 /// <summary>인증 코드·비밀번호 재설정 메일 발송. Host가 비면 콘솔에만 출력 (개발용).</summary>

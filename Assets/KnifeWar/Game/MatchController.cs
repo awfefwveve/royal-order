@@ -191,7 +191,7 @@ namespace KnifeWar.Game
                 int local = p % PlayersPerTeam;
                 _bots[p].PreferredClass = local == 5 ? PlayerClass.King : PlayerClass.Knight;   // 왕은 팀당 1명
             }
-            _human.Sensitivity = PlayerPrefs.GetFloat("kw.sensitivity", 2.0f);
+            GameSettings.Load();
         }
 
         void OnDestroy()
@@ -1056,7 +1056,8 @@ namespace KnifeWar.Game
             var camGo = new GameObject("PlayerCamera");
             var cam = camGo.AddComponent<Camera>();
             cam.nearClipPlane = 0.03f;
-            cam.fieldOfView = 90f;
+            cam.fieldOfView = GameSettings.Fov;
+            GameSettings.Changed += () => { if (cam != null) cam.fieldOfView = GameSettings.Fov; };
             cam.farClipPlane = 600f;
             camGo.AddComponent<AudioListener>();
             camGo.tag = "MainCamera";

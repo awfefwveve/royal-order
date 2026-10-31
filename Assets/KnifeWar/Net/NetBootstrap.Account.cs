@@ -17,6 +17,50 @@ namespace KnifeWar.Net
         ProfileDto _profile;
         AccountMode _accMode = AccountMode.Login;
         string _email = "", _password = "", _password2 = "", _regName = "", _code = "";
+        bool _agreeTerms, _age14;
+        [Serializable] sealed class TermsInfo { public string termsVersion; public string termsUrl; public string privacyUrl; }
+        TermsInfo _terms;
+        bool _termsLoading;
+
+        /// <summary>현재 약관 버전·주소를 백엔드에서 받아 둔다 (가입 화면·재동의 화면에서 필요).</summary>
+        IEnumerator LoadTerms()
+        {
+            if (_terms != null || _termsLoading) yield break;
+            _termsLoading = true;
+            yield return new BackendClient(_backendUrl.Trim()).Get("/client/version", (code, text) =>
+            {
+                if (code == 200) try { _terms = JsonUtility.FromJson<TermsInfo>(text); } catch { }
+            });
+            _termsLoading = false;
+        }
+
+        /// <summary>약관·개인정보 동의 체크 + 보기 버튼. 둘 다 체크해야 true.</summary>
+        float DrawTermsChecks(float x, float y, float pw, bool withAge)
+        {
+            if (_terms == null) { if (!_termsLoading) StartCoroutine(LoadTerms()); }
+            _agreeTerms = GUI.Toggle(new Rect(x, y, pw - 190, 26), _agreeTerms, " " + L.T("acc_agree_terms"));
+            GUI.enabled = _terms != null && !string.IsNullOrEmpty(_terms.termsUrl);
+            if (GUI.Button(new Rect(x + pw - 186, y, 90, 26), L.T("acc_view_terms"))) Application.OpenURL(_terms.termsUrl);
+            if (GUI.Button(new Rect(x + pw - 92, y, 92, 26), L.T("acc_view_privacy"))) Application.OpenURL(_terms.privacyUrl);
+            GUI.enabled = !_accBusy;
+            y += 30;
+            if (withAge)
+            {
+                _age14 = GUI.Toggle(new Rect(x, y, pw, 26), _age14, " " + L.T("acc_age14"));
+                y += 30;
+            }
+            return y + 4;
+        }
+
+        void DoAgreeTerms()
+        {
+            if (_terms == null || !_agreeTerms) { _accMsg = L.T("acc_need_terms"); return; }
+            StartCoroutine(AccountCall("/auth/terms", $"{{\"version\":\"{BackendClient.Escape(_terms.termsVersion)}\"}}", (code, text) =>
+            {
+                if (code == 200) { _profile = JsonUtility.FromJson<ProfileDto>(text); _agreeTerms = false; }
+                else { _terms = null; _accMsg = L.T("acc_terms_changed"); }   // 그새 버전이 바뀜 → 다시 받기
+            }));
+        }
         string _accMsg = "";
         bool _accBusy;
         string _lastError = "";
@@ -134,6 +178,7 @@ namespace KnifeWar.Net
             PlayerPrefs.SetString("kw.session_backend", Session.ApiBackend);
             PlayerPrefs.SetString("kw.email", _email.Trim());
             PlayerPrefs.SetString("kw.backend", _backendUrl.Trim());
+            ErrorReporter.SetBackend(_backendUrl);
             PlayerPrefs.Save();
         }
 
@@ -196,11 +241,14 @@ namespace KnifeWar.Net
         {
             if (_password != _password2) { _accMsg = L.T("acc_pw_mismatch"); return; }
             if (_password.Length < 8) { _accMsg = L.T("acc_pw_short"); return; }
+            if (!_agreeTerms || _terms == null) { _accMsg = L.T("acc_need_terms"); return; }
+            if (!_age14) { _accMsg = L.T("acc_need_age"); return; }
             StartCoroutine(AccountCall("/auth/register",
-                $"{{\"email\":\"{BackendClient.Escape(_email.Trim())}\",\"password\":\"{BackendClient.Escape(_password)}\",\"name\":\"{BackendClient.Escape(_regName.Trim())}\"}}", (code, text) =>
+                $"{{\"email\":\"{BackendClient.Escape(_email.Trim())}\",\"password\":\"{BackendClient.Escape(_password)}\",\"name\":\"{BackendClient.Escape(_regName.Trim())}\",\"agreedTerms\":\"{BackendClient.Escape(_terms.termsVersion)}\",\"age14\":true}}", (code, text) =>
                 {
                     if (code == 200) OnLoggedIn(text);
                     else if (code == 409) _accMsg = L.T("acc_email_taken");
+                    else if (text.Contains("\"terms\"")) { _terms = null; _accMsg = L.T("acc_terms_changed"); }
                     else if (text.Contains("email")) _accMsg = L.T("acc_bad_email");
                     else if (text.Contains("password")) _accMsg = L.T("acc_pw_short");
                     else _accMsg = L.T("st_login_failed", code);
@@ -331,6 +379,7 @@ namespace KnifeWar.Net
                     y = Field(x, y, pw, L.T("acc_name"), ref _regName, false);
                     y = Field(x, y, pw, L.T("acc_password"), ref _password, true);
                     y = Field(x, y, pw, L.T("acc_password2"), ref _password2, true);
+                    y = DrawTermsChecks(x, y, pw, true);
                     if (GUI.Button(new Rect(x, y, pw, 52), L.T("acc_register_do"), _button)) DoRegister();
                     y += 60;
                     if (GUI.Button(new Rect(x, y, pw, 34), L.T("acc_back"), _button)) { _accMode = AccountMode.Login; _accMsg = ""; }
@@ -381,6 +430,23 @@ namespace KnifeWar.Net
         float DrawProfileAndMatch(float x, float y, float pw)
         {
             var p = _profile;
+            if (!p.termsOk)
+            {
+                // 약관이 바뀌었으면 다시 동의해야 매칭 가능
+                GUI.Label(new Rect(x, y, pw, 30), p.displayId, _label);
+                y += 34;
+                GUI.Label(new Rect(x, y, pw, 48), L.T("acc_terms_updated"), _small);
+                y += 52;
+                GUI.enabled = !_accBusy;
+                y = DrawTermsChecks(x, y, pw, false);
+                if (GUI.Button(new Rect(x, y, pw, 48), L.T("acc_agree_do"), _button)) DoAgreeTerms();
+                y += 56;
+                if (GUI.Button(new Rect(x, y, pw, 34), L.T("acc_logout"), _button)) Logout();
+                GUI.enabled = true;
+                y += 42;
+                if (!string.IsNullOrEmpty(_accMsg)) { GUI.Label(new Rect(x, y, pw, 40), _accMsg, _small); y += 44; }
+                return y;
+            }
             GUI.Label(new Rect(x, y, pw, 30), p.displayId, _label);
             y += 30;
             string rank = L.T("acc_rank", TierName(p.tier), p.mmr, p.wins, p.losses);
@@ -490,6 +556,7 @@ namespace KnifeWar.Net
     {
         public string id; public string name; public string tag; public string displayId; public string email; public bool emailVerified;
         public string homeRegion; public int mmr; public int tier; public int wins; public int losses; public int matches; public int kills; public int deaths;
+        public bool termsOk = true;
     }
     [Serializable] public sealed class BanInfo { public string error; public string reason; public long until; }
     [Serializable] public sealed class LeaderDto { public int rank; public string name; public string displayId; public int mmr; public int tier; public int wins; public int matches; }

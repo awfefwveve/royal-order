@@ -7,11 +7,12 @@ set -e
 BUNDLE_URL="https://patch.astrelgames.com/server/royalorder-server.tar.gz"
 GAME_SERVERS=2            # matches running at once (12 players each)
 TICK=64
+API_DOMAIN="api.astrelgames.com"   # point this DNS A record (DNS only, grey cloud) at the server IP; HTTPS cert is automatic
 exec > /var/log/royalorder-setup.log 2>&1
 
 export DEBIAN_FRONTEND=noninteractive HOME=/root DOTNET_CLI_HOME=/root DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
 apt-get update
-apt-get install -y dotnet-sdk-8.0 postgresql curl python3 ca-certificates
+apt-get install -y dotnet-sdk-8.0 postgresql curl python3 ca-certificates caddy
 
 mkdir -p /opt/royalorder && cd /opt/royalorder
 curl -fsSL "$BUNDLE_URL" -o bundle.tar.gz
@@ -36,22 +37,22 @@ SERVER_SECRET=$(head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48)
 ADMIN_KEY=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
 
 # Backend config: kr ping URL -> this server, test matchmaking (fill with bots after 20s)
-python3 - "$PUBLIC_IP" <<'PY'
+python3 - "$PUBLIC_IP" "$API_DOMAIN" <<'PY'
 import json, sys
-ip = sys.argv[1]
+ip, domain = sys.argv[1], sys.argv[2]
 p = '/opt/royalorder/backend/appsettings.json'
 c = json.load(open(p, encoding='utf-8'))
 k = c['KnifeWar']
 k['TokenSecret'] = ''; k['ServerSecret'] = ''   # provided via environment
 k['DataDir'] = '/opt/royalorder/data'
 for r in k['Regions']:
-    r['PingUrl'] = f'http://{ip}:8080/ping' if r['Id'] == 'kr' else ''
+    r['PingUrl'] = f'https://{domain}/ping' if r['Id'] == 'kr' else ''
 k['Matchmaking'].update({'MinHumansToStart': 1, 'FillWithBotsAfterSeconds': 20})
 json.dump(c, open(p, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 PY
 
 cat > /etc/royalorder.env <<ENV
-KW_URLS=http://+:8080
+KW_URLS=http://127.0.0.1:8080
 KW_TOKEN_SECRET=$TOKEN_SECRET
 KW_SERVER_SECRET=$SERVER_SECRET
 KW_ADMIN_KEY=$ADMIN_KEY
@@ -95,8 +96,39 @@ systemctl enable --now royalorder-backend
 sleep 3
 for i in $(seq 0 $((GAME_SERVERS-1))); do systemctl enable --now royalorder-game@$((7777+i)); done
 
-# Firewall: backend 8080/tcp, game 7777-7786/udp, ssh 22
-if command -v ufw >/dev/null; then
-  ufw allow 22/tcp; ufw allow 8080/tcp; ufw allow 7777:7786/udp; ufw --force enable
+# HTTPS: Caddy gets a Let's Encrypt certificate by itself once DNS points here (retries until then).
+# Backend listens on 127.0.0.1 only, so passwords never travel unencrypted.
+cat > /etc/caddy/Caddyfile <<CADDY
+$API_DOMAIN {
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+}
+CADDY
+systemctl enable caddy
+systemctl restart caddy
+
+# Daily DB backup at 04:00, keep 14 days (local disk; for launch also copy off-server, see Deploy/README.md)
+mkdir -p /var/backups/royalorder && chown postgres /var/backups/royalorder
+cat > /etc/cron.d/royalorder-backup <<'CRON'
+0 4 * * * postgres pg_dump -Fc royalorder > /var/backups/royalorder/royalorder-$(date +\%F).dump && find /var/backups/royalorder -name '*.dump' -mtime +14 -delete
+CRON
+
+# Health check every minute: backend /ping; 3 misses in a row -> restart it and log
+cat > /usr/local/bin/royalorder-health <<'SH'
+#!/bin/bash
+F=/run/royalorder-health.fail
+if curl -fsS -m 5 http://127.0.0.1:8080/ping >/dev/null; then rm -f $F; exit 0; fi
+n=$(( $(cat $F 2>/dev/null || echo 0) + 1 )); echo $n > $F
+if [ $n -ge 3 ]; then
+  echo "$(date -Is) backend not answering, restarting" >> /var/log/royalorder-health.log
+  systemctl restart royalorder-backend; rm -f $F
 fi
-echo "ROYAL ORDER ready: http://$PUBLIC_IP:8080"
+SH
+chmod +x /usr/local/bin/royalorder-health
+echo "* * * * * root /usr/local/bin/royalorder-health" > /etc/cron.d/royalorder-health
+
+# Firewall: https 443 + 80 (certificate), game 7777-7786/udp, ssh 22. Backend 8080 stays private.
+if command -v ufw >/dev/null; then
+  ufw allow 22/tcp; ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 7777:7786/udp; ufw --force enable
+fi
+echo "ROYAL ORDER ready: https://$API_DOMAIN  (DNS A record $API_DOMAIN -> $PUBLIC_IP)"

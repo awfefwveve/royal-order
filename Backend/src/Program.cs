@@ -96,7 +96,17 @@ object Profile(Account a)
         mmr = st?.Mmr ?? 1000, tier = Tier(st), wins = st?.Wins ?? 0, losses = st?.Losses ?? 0, matches = st?.Matches ?? 0,
         kills = st?.Kills ?? 0, deaths = st?.Deaths ?? 0,
         a.Stats,
+        termsOk = TermsOk(a),
     };
+}
+
+bool TermsOk(Account a) =>
+    a.Provider != "email" || string.IsNullOrEmpty(opt.Client.TermsVersion) || a.Extra.TermsVersion == opt.Client.TermsVersion;
+
+void AgreeTerms(Account a)
+{
+    a.Extra.TermsVersion = opt.Client.TermsVersion;
+    a.Extra.TermsAgreedAt = TokenService.Now();
 }
 
 static bool ValidEmail(string e) =>
@@ -158,7 +168,40 @@ http.Map("GET", "/client/version", _ => Ok(new
     patchBaseUrl = opt.Client.PatchBaseUrl.TrimEnd('/'),
     notice = opt.Client.Notice,
     maintenance = opt.Client.Maintenance,
+    termsVersion = opt.Client.TermsVersion,
+    termsUrl = opt.Client.TermsUrl,
+    privacyUrl = opt.Client.PrivacyUrl,
 }));
+
+// 클라 오류 보고: 날짜별 파일(dataDir/client-errors/yyyy-MM-dd.jsonl)에 한 줄씩 + 최근 200건은 메모리 (운영 API로 조회)
+var clientErrors = new LinkedList<string>();
+http.Map("POST", "/client/report", r =>
+{
+    if (string.IsNullOrEmpty(r.Body) || r.Body.Length > 64_000) return Status(400);
+    try { System.Text.Json.JsonDocument.Parse(r.Body).Dispose(); } catch { return Status(400); }
+    string line = $"{{\"at\":{TokenService.Now()},\"report\":{r.Body.Replace('\n', ' ')}}}";
+    lock (clientErrors)
+    {
+        clientErrors.AddFirst(line);
+        while (clientErrors.Count > 200) clientErrors.RemoveLast();
+        try
+        {
+            var dir = Path.Combine(dataDir, "client-errors");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, DateTime.UtcNow.ToString("yyyy-MM-dd") + ".jsonl"), line + "\n");
+        }
+        catch (Exception e) { Log("client report save failed: " + e.Message); }
+    }
+    return Ok(new { ok = true });
+});
+
+http.Map("GET", "/admin/errors", r =>
+{
+    if (!IsAdmin(r)) return Status(401);
+    string[] items;
+    lock (clientErrors) items = clientErrors.ToArray();
+    return Text("[" + string.Join(",", items) + "]");
+});
 
 // 운영: 점검 켜기/끄기, 공지, 최신 버전 바꾸기 (재시작 없이)
 http.Map("POST", "/admin/client", r =>
@@ -211,6 +254,8 @@ http.Map("POST", "/auth/register", r =>
     var req = r.Json<RegisterReq>();
     if (req == null || !ValidEmail(req.Email)) return Status(400, new { error = "email" });
     if (string.IsNullOrEmpty(req.Password) || req.Password.Length < 8 || req.Password.Length > 128) return Status(400, new { error = "password" });
+    if (!string.IsNullOrEmpty(opt.Client.TermsVersion) && req.AgreedTerms != opt.Client.TermsVersion) return Status(400, new { error = "terms" });
+    if (!req.Age14) return Status(400, new { error = "age" });
     string name = CleanName(req.Name);
     string norm = req.Email.Trim().ToLowerInvariant();
     Account a;
@@ -223,9 +268,10 @@ http.Map("POST", "/auth/register", r =>
         a.Extra.PasswordHash = Passwords.Hash(req.Password);
         a.Extra.Tag = NewTag(name);
         a.Extra.VerifyCode = Passwords.Code();
+        AgreeTerms(a);
         store.SaveAccount(a);
     }
-    mailer.Send(a.Extra.Email, "KnifeWar 이메일 인증 / Email verification", $"인증 코드 / Code: {a.Extra.VerifyCode}");
+    mailer.Send(a.Extra.Email, "ROYAL ORDER 이메일 인증 / Email verification", $"인증 코드 / Code: {a.Extra.VerifyCode}");
     Log($"account registered {a.Id} {a.DisplayId}");
     return Ok(Login(a));
 });
@@ -274,7 +320,7 @@ http.Map("POST", "/auth/verify/resend", r =>
     if (a == null || a.Provider != "email" || a.Extra.EmailVerified) return Status(400);
     a.Extra.VerifyCode = Passwords.Code();
     store.SaveAccount(a);
-    mailer.Send(a.Extra.Email, "KnifeWar 이메일 인증 / Email verification", $"인증 코드 / Code: {a.Extra.VerifyCode}");
+    mailer.Send(a.Extra.Email, "ROYAL ORDER 이메일 인증 / Email verification", $"인증 코드 / Code: {a.Extra.VerifyCode}");
     return Ok();
 });
 
@@ -288,7 +334,7 @@ http.Map("POST", "/auth/reset/request", r =>
         a.Extra.ResetCode = Passwords.Code();
         a.Extra.ResetExpires = TokenService.Now() + 30 * 60;
         store.SaveAccount(a);
-        mailer.Send(a.Extra.Email, "KnifeWar 비밀번호 재설정 / Password reset", $"재설정 코드 (30분) / Reset code (30 min): {a.Extra.ResetCode}");
+        mailer.Send(a.Extra.Email, "ROYAL ORDER 비밀번호 재설정 / Password reset", $"재설정 코드 (30분) / Reset code (30 min): {a.Extra.ResetCode}");
     }
     return Ok();
 });
@@ -317,6 +363,17 @@ http.Map("POST", "/auth/logout-all", r =>
     a.Extra.TokenVersion++;
     store.SaveAccount(a);
     return Ok();
+});
+
+// 약관이 바뀐 뒤 다시 동의
+http.Map("POST", "/auth/terms", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    var req = r.Json<TermsReq>();
+    if (req?.Version != opt.Client.TermsVersion) return Status(409, new { error = "terms_version", current = opt.Client.TermsVersion });
+    lock (accountLock) { AgreeTerms(a); store.SaveAccount(a); }
+    return Ok(Profile(a));
 });
 
 http.Map("POST", "/account/name", r =>
@@ -446,6 +503,7 @@ http.Map("POST", "/mm/join", r =>
     if (a == null) return Status(401);
     if (opt.Client.Maintenance) return Status(503, new { error = "maintenance", notice = opt.Client.Notice });
     if (opt.RequireEmailVerification && a.Provider == "email" && !a.Extra.EmailVerified) return Status(403, new { error = "verify_email" });
+    if (!TermsOk(a)) return Status(403, new { error = "terms" });
     var req = r.Json<JoinQueue>();
     var best = req?.Pings?.OrderBy(kv => kv.Value).Select(kv => kv.Key).FirstOrDefault();
     if (best != null && a.HomeRegion != best) { a.HomeRegion = best; store.SaveAccount(a); }
@@ -708,7 +766,8 @@ public sealed class AppConfig
 }
 
 public sealed record DevLogin(string DeviceId, string Name);
-public sealed record RegisterReq(string Email, string Password, string Name);
+public sealed record RegisterReq(string Email, string Password, string Name, string AgreedTerms = "", bool Age14 = false);
+public sealed record TermsReq(string Version);
 public sealed record LoginReq(string Email, string Password);
 public sealed record CodeReq(string Code);
 public sealed record ResetRequestReq(string Email);

@@ -37,7 +37,9 @@ public sealed class AccountExtra
     public int TokenVersion { get; set; }             // 올리면 기존 로그인 전부 무효 (비밀번호 변경·모든 기기 로그아웃)
     public long BanUntil { get; set; }                // 기간 제재 (0 = 없음)
     public string BanReason { get; set; } = "";
-    public List<string> RecentMatches { get; set; } = new();   // 최근 경기 id (최신이 앞, 최대 20)
+    public List<string> RecentMatches { get; set; } = new();
+    public string TermsVersion { get; set; } = "";    // 마지막으로 동의한 약관 버전
+    public long TermsAgreedAt { get; set; }   // 최근 경기 id (최신이 앞, 최대 20)
 }
 
 /// <summary>플레이어 신고.</summary>

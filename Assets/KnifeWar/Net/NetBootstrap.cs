@@ -27,13 +27,14 @@ namespace KnifeWar.Net
     /// </summary>
     public sealed partial class NetBootstrap : MonoBehaviour
     {
-        public const string DefaultBackend = "http://127.0.0.1:8080";
+        /// <summary>에디터는 내 PC 백엔드, 빌드는 실서버(HTTPS). 메뉴의 주소 칸으로 바꿀 수 있다.</summary>
+        public static string DefaultBackend => Application.isEditor ? "http://127.0.0.1:8080" : "https://api.astrelgames.com";
 
         MatchController _m;
         bool _started;
         string _address = "127.0.0.1";
         string _portText = NetProtocol.DefaultPort.ToString();
-        string _backendUrl = DefaultBackend;
+        string _backendUrl = "";
         string _playerName = "Player";
         float _lag;
         GUIStyle _title, _label, _button, _field, _small;
@@ -95,9 +96,11 @@ namespace KnifeWar.Net
 
         void Start()
         {
+            GameSettings.Load();
             _m = GetComponent<MatchController>();
             _address = PlayerPrefs.GetString("kw.address", _address);
-            _backendUrl = PlayerPrefs.GetString("kw.backend", _backendUrl);
+            _backendUrl = PlayerPrefs.GetString("kw.backend", DefaultBackend);
+            ErrorReporter.Install(_backendUrl);
             _playerName = PlayerPrefs.GetString("kw.name", Environment.UserName ?? "Player");
             if (!Application.isEditor) BuildLog.Install();
             MatchController.LeaveHandler = null;
@@ -536,6 +539,8 @@ namespace KnifeWar.Net
         // 시작 메뉴
         // ------------------------------------------------------------------
 
+        bool _settingsOpen;
+
         void OnGUI()
         {
             SkinSet.ApplyFont();
@@ -563,6 +568,12 @@ namespace KnifeWar.Net
 
             Dim(w, h, null);
             if (DrawUpdater(w, h)) return;
+            if (_settingsOpen)
+            {
+                if (!KnifeWar.Game.SettingsWindow.Draw(w, h)) _settingsOpen = false;
+                return;
+            }
+            if (GUI.Button(new Rect(10, 10, 120, 30), L.T("settings"))) _settingsOpen = true;
             for (int i = 0; i < L.LangNames.Length; i++)
             {
                 bool cur = (int)L.Current == i;

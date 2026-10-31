@@ -50,3 +50,17 @@
 - 처음 설치 파일: `Deploy/installer/KnifeWar.iss`를 Inno Setup(무료)으로 컴파일 → `KnifeWarSetup-버전.exe`를 홈페이지에 올림. 관리자 권한 없이 `%LocalAppData%\Programs`에 설치되어야 자동 업데이트가 파일을 덮어쓸 수 있음
 - 점검: `POST /admin/client {"maintenance":true,"notice":"23:00~24:00 점검"}` → 로그인·매칭이 막히고 메뉴에 공지
 - 개발 PC에서 패치 시험: 백엔드 설정 `Client.PatchDir`에 `Builds/Patch` 경로, `PatchBaseUrl`에 `http://127.0.0.1:8080/patch` → 백엔드가 패치 파일을 직접 내려줌
+
+## 5. 테스트 서버 띄우기 (Vultr)
+
+1. 서버 묶음 올리기: `Builds/royalorder-server.tar.gz` → R2 `patch` 버킷 `server/` 폴더.
+2. Vultr에서 서버 만들기: 서울, Ubuntu 24.04, 시작 스크립트 `royalorder` 선택 (`Deploy/vultr/startup.sh`).
+3. Cloudflare DNS: `api` A 레코드 → 서버 IP, **프록시 끔(회색 구름)**. 몇 분 뒤 HTTPS 인증서가 자동으로 붙는다.
+4. 확인: `https://api.astrelgames.com/ping` 이 열리면 준비 끝. 설치 기록은 서버의 `/var/log/royalorder-setup.log`.
+5. 테스트 끝나면 서버 삭제 (데이터도 같이 사라짐).
+
+서버가 알아서 하는 것:
+- HTTPS (Caddy). 백엔드 8080은 서버 안에서만 열림 → 비밀번호가 암호화 없이 오가지 않음
+- DB 매일 새벽 4시 백업, 14일 보관 (`/var/backups/royalorder`). 출시 때는 서버 밖(R2 등)에도 복사해야 함
+- 1분마다 백엔드 상태 확인, 3번 연속 응답 없으면 재시작 (`/var/log/royalorder-health.log`)
+- 게임은 출시 빌드면 `https://api.astrelgames.com`, 에디터면 `http://127.0.0.1:8080` 에 붙는다

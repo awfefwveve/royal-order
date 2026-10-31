@@ -13,19 +13,26 @@ namespace KnifeWar.Game
         GUIStyle _big, _mid, _small, _center, _panel;
         Texture2D _white;
 
-        bool _menu;
+        bool _menu, _settings;
+        float _fpsT, _fps;
 
         public void Init(MatchController m) => _m = m;
 
         void Update()
         {
             if (_m == null) return;
-            if (Input.GetKeyDown(KeyCode.Escape)) SetMenu(!_menu);
+            if (Input.GetKeyDown(KeyCode.Escape) && !SettingsWindow.Capturing)
+            {
+                if (_settings) { _settings = false; GameSettings.Save(); }
+                else SetMenu(!_menu);
+            }
+            _fps = Mathf.Lerp(_fps, 1f / Mathf.Max(Time.unscaledDeltaTime, 0.0001f), 0.05f);
         }
 
         void SetMenu(bool open)
         {
             _menu = open;
+            if (!open) _settings = false;
             _m.HumanControls.Blocked = open;
             Cursor.lockState = open ? CursorLockMode.None : CursorLockMode.Locked;
             Cursor.visible = open;
@@ -94,13 +101,15 @@ namespace KnifeWar.Game
             if (Time.time < _m.LastSummonMessageUntil)
                 Label(new Rect(0, h * 0.62f, w, 30), _m.LastSummonMessage, _center, new Color(1f, 0.9f, 0.5f));
 
-            if (Input.GetKey(KeyCode.Tab) || r.Phase == RoundPhase.MatchEnd) DrawScoreboard(w, h);
+            if ((!_menu && GameSettings.Held(Bind.Scoreboard)) || r.Phase == RoundPhase.MatchEnd) DrawScoreboard(w, h);
+            if (GameSettings.ShowFps) Label(new Rect(w - 110, 8, 100, 22), Mathf.RoundToInt(_fps) + " FPS", _small, Color.white);
 
             // 커서 안내
             if (!_menu && Cursor.lockState != CursorLockMode.Locked && r.Phase != RoundPhase.MatchEnd)
                 Label(new Rect(0, h * 0.5f + 60, w, 30), L.T("click_to_start"), _center, Color.white);
 
-            if (_menu) DrawMenu(w, h);
+            if (_menu && _settings) { if (!SettingsWindow.Draw(w, h)) _settings = false; }
+            else if (_menu) DrawMenu(w, h);
         }
 
         void DrawScoreboard(float w, float h)
@@ -142,23 +151,7 @@ namespace KnifeWar.Game
             Rect(x, y, pw, ph, new Color(0.08f, 0.09f, 0.12f, 0.95f));
             Label(new Rect(x, y + 12, pw, 40), L.T("menu"), _big, Color.white);
 
-            var input = _m.HumanControls;
-            Label(new Rect(x + 30, y + 70, 300, 28), L.T("sensitivity", input.Sensitivity), _mid, Color.white);
-            float v = GUI.HorizontalSlider(new Rect(x + 30, y + 104, pw - 60, 20), input.Sensitivity, 0.2f, 6f);
-            if (!Mathf.Approximately(v, input.Sensitivity))
-            {
-                input.Sensitivity = v;
-                PlayerPrefs.SetFloat("kw.sensitivity", v);
-            }
-
-            // 언어
-            Label(new Rect(x + 30, y + 132, 80, 28), L.T("language"), _small, Color.white);
-            for (int i = 0; i < L.LangNames.Length; i++)
-            {
-                var rc = new Rect(x + 110 + i * 72, y + 130, 68, 28);
-                bool cur = (int)L.Current == i;
-                if (GUI.Toggle(rc, cur, L.LangNames[i], GUI.skin.button) && !cur) L.Set((Lang)i);
-            }
+            if (GUI.Button(new Rect(x + 30, y + 90, pw - 60, 60), L.T("settings"))) _settings = true;
 
             if (GUI.Button(new Rect(x + 30, y + 180, 170, 44), L.T("resume"))) SetMenu(false);
             if (_m.Role != NetRole.Client && GUI.Button(new Rect(x + 220, y + 180, 170, 44), L.T("restart")))

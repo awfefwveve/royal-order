@@ -12,7 +12,7 @@ namespace KnifeWar.Game
     public sealed class GameFeedback : MonoBehaviour
     {
         MatchController _m;
-        AudioSource _ui;
+        AudioSource _ui, _music;
         AudioClip _swing, _stab, _hit, _head, _kill, _hurt, _summon, _beep, _go, _win, _lose, _monsterHit, _death;
 
         struct Popup { public Vector3 Pos; public string Text; public Color Color; public float Born; }
@@ -40,17 +40,28 @@ namespace KnifeWar.Game
             _ui = (cam != null ? cam.gameObject : gameObject).AddComponent<AudioSource>();
             _ui.playOnAwake = false;
             _ui.spatialBlend = 0f;
+            ApplyVolume();
+            GameSettings.Changed += ApplyVolume;
 
             var skin = SkinSet.Current;
             if (skin != null && skin.Music != null)
             {
-                var music = _ui.gameObject.AddComponent<AudioSource>();
-                music.clip = skin.Music;
-                music.loop = true;
-                music.volume = 0.3f;
-                music.spatialBlend = 0f;
-                music.Play();
+                _music = _ui.gameObject.AddComponent<AudioSource>();
+                _music.clip = skin.Music;
+                _music.loop = true;
+                _music.spatialBlend = 0f;
+                ApplyVolume();
+                _music.Play();
             }
+        }
+
+        void OnDestroy() => GameSettings.Changed -= ApplyVolume;
+
+        /// <summary>효과음은 _ui 볼륨(PlayOneShot에 곱해짐)과 3D 재생 볼륨에, 음악은 따로.</summary>
+        void ApplyVolume()
+        {
+            if (_ui != null) _ui.volume = GameSettings.Sfx;
+            if (_music != null) _music.volume = 0.6f * GameSettings.Music;
         }
 
         /// <summary>SkinSet에 넣은 소리로 교체 (빈 칸은 기본 합성음 유지).</summary>
@@ -103,7 +114,7 @@ namespace KnifeWar.Game
             }
             else
             {
-                AudioSource.PlayClipAtPoint(part == HitPart.Head ? _head : _hit, victimPos + Vector3.up, 0.6f);
+                AudioSource.PlayClipAtPoint(part == HitPart.Head ? _head : _hit, victimPos + Vector3.up, (0.6f) * GameSettings.Sfx);
             }
         }
 
@@ -144,7 +155,7 @@ namespace KnifeWar.Game
         void Play(AudioClip clip, int player, float vol)
         {
             if (player == _m.HumanIndex) _ui.PlayOneShot(clip, vol);
-            else AudioSource.PlayClipAtPoint(clip, _m.Avatars[player].transform.position + Vector3.up * 1.4f, vol);
+            else AudioSource.PlayClipAtPoint(clip, _m.Avatars[player].transform.position + Vector3.up * 1.4f, (vol) * GameSettings.Sfx);
         }
 
         void AddPopup(Vector3 pos, string text, Color c)
