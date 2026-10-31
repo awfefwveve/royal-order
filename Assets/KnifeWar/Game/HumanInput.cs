@@ -6,7 +6,7 @@ namespace KnifeWar.Game
     /// <summary>
     /// 키보드·마우스 → PlayerIntent.
     /// WASD 이동, Space 점프, Ctrl 앉기, Shift 걷기, 좌클 베기, 우클 찌르기,
-    /// 준비 단계 1/2 = 직업 선택, 라운드 중(마법사) 1/2/3 = 소환, Q = 버프. Esc 메뉴는 GameHud가 처리.
+    /// 준비 단계 1/2 = 직업 선택, 라운드 중(왕) 1/2/3 = 소환, Q = 버프. Esc 메뉴는 GameHud가 처리.
     /// </summary>
     public sealed class HumanInput
     {

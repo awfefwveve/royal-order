@@ -4,7 +4,7 @@ using UnityEngine;
 namespace KnifeWar.Game
 {
     /// <summary>
-    /// 오프라인 테스트용 봇. 기사는 가까운 적에게 달려가서 베고, 마법사는 뒤에서 소환한다.
+    /// 오프라인 테스트용 봇. 기사는 가까운 적에게 달려가서 베고, 왕는 뒤에서 소환한다.
     /// 일부러 완벽하지 않게: 반응 지연, 조준 흔들림, 가끔 헛스윙.
     /// </summary>
     public sealed class BotBrain
@@ -51,7 +51,7 @@ namespace KnifeWar.Game
             float dir = _me.Team == 0 ? 1f : -1f;
             Vector3 pos = _me.transform.position;
 
-            if (_me.Class == PlayerClass.Wizard) return ThinkWizard(m, i, now, pos, dir);
+            if (_me.Class == PlayerClass.King) return ThinkWizard(m, i, now, pos, dir);
 
             // ---- 기사 ----
             if (_target < 0 || !m.Avatars[_target].Alive || now > _reactUntil + 3f)

@@ -5,7 +5,7 @@ namespace KnifeWar.Core
     public enum PlayerClass : byte
     {
         Knight = 0,  // 황실기사단 — 칼
-        Wizard = 1,  // 황실마법사 — 소환·버프
+        King = 1,    // 왕 — 팀당 1명, 소환·버프만 (직접 공격 없음)
     }
 
     public enum RoundPhase : byte
@@ -40,9 +40,9 @@ namespace KnifeWar.Core
 
     /// <summary>
     /// 발로란트식 라운드 진행 (서버 전용, 넷코드 독립).
-    /// - 준비 단계에서 각자 기사/마법사 선택, 인원 제한 없음. 안 고르면 이전 라운드 직업 유지.
+    /// - 준비 단계에서 각자 기사/왕 선택, 왕은 팀당 1명. 안 고르면 이전 라운드 직업 유지.
     /// - 라운드 중 부활 없음.
-    /// - 승리(임시): 상대 기사 + 마법사 전멸. 시간 초과 시 생존자 많은 팀, 같으면 무승부(점수 없음).
+    /// - 승리(임시): 상대 기사 + 왕 전멸. 시간 초과 시 생존자 많은 팀, 같으면 무승부(점수 없음).
     /// </summary>
     public sealed class RoundRules
     {
@@ -84,6 +84,9 @@ namespace KnifeWar.Core
         public bool PickClass(int player, PlayerClass c)
         {
             if (Phase != RoundPhase.Select || !Connected[player]) return false;
+            if (c == PlayerClass.King)
+                for (int q = 0; q < Team.Length; q++)
+                    if (q != player && Team[q] == Team[player] && GetPick(q) == PlayerClass.King) return false;   // 왕은 팀당 1명
             _pick[player] = c;
             return true;
         }

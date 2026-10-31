@@ -113,7 +113,7 @@ namespace KnifeWar.Core
         public NativeArray<PlayerPose> Poses;   // 이번 틱 서버 확정 자세 (이동 코드가 채운다)
         public NativeArray<byte> Teams;
         public NativeArray<int> Hp;
-        public NativeArray<byte> CanAttack;     // 기사만 1 (마법사는 칼 없음)
+        public NativeArray<byte> CanAttack;     // 기사만 1 (왕는 칼 없음)
 
         // 공격 진행 상태
         NativeArray<int> _readyTick;

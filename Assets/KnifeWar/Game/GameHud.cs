@@ -191,7 +191,7 @@ namespace KnifeWar.Game
 
             var mine = r.GetPick(me.Index);
             Option(new Rect(x + 30, y + 70, 240, 90), L.T("knight_title"), L.T("knight_desc"), mine == PlayerClass.Knight);
-            Option(new Rect(x + 290, y + 70, 240, 90), L.T("wizard_title"), L.T("wizard_desc"), mine == PlayerClass.Wizard);
+            Option(new Rect(x + 290, y + 70, 240, 90), L.T("wizard_title"), L.T("wizard_desc"), mine == PlayerClass.King);
 
             // 팀원 선택 현황 (실시간)
             string line = "";
@@ -224,7 +224,7 @@ namespace KnifeWar.Game
             Label(new Rect(30, h - 68, 200, 30), me.Alive ? L.T("hp", hp) : L.T("dead_spectate"), _mid, Color.white);
 
             // 직업별
-            if (me.Class == PlayerClass.Wizard)
+            if (me.Class == PlayerClass.King)
             {
                 float mana = _m.Wizard.Mana(me.Index);
                 Rect(w - 360, h - 110, 340, 90, new Color(0, 0, 0, 0.5f));

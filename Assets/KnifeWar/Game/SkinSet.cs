@@ -16,9 +16,9 @@ namespace KnifeWar.Game
     {
         [Header("캐릭터 (발이 원점, 앞이 +Z인 프리팹. Animator 있으면 아래 파라미터를 자동으로 움직임)")]
         [Tooltip("파랑 팀 기사")] public GameObject Team0Knight;
-        [Tooltip("파랑 팀 마법사 (비우면 기사 모델 + 모자)")] public GameObject Team0Wizard;
+        [Tooltip("파랑 팀 왕 (비우면 기사 모델 + 모자)")] public GameObject Team0Wizard;
         [Tooltip("빨강 팀 기사")] public GameObject Team1Knight;
-        [Tooltip("빨강 팀 마법사 (비우면 기사 모델 + 모자)")] public GameObject Team1Wizard;
+        [Tooltip("빨강 팀 왕 (비우면 기사 모델 + 모자)")] public GameObject Team1Wizard;
         [Tooltip("모델 키를 판정 키(1.8m)에 자동으로 맞춤 — 보이는 몸과 맞는 범위가 어긋나지 않게")]
         public bool FitModelHeight = true;
 
@@ -93,7 +93,7 @@ namespace KnifeWar.Game
 
         public GameObject CharacterPrefab(byte team, PlayerClass cls)
         {
-            if (cls == PlayerClass.Wizard)
+            if (cls == PlayerClass.King)
             {
                 var w = team == 0 ? Team0Wizard : Team1Wizard;
                 if (w != null) return w;

@@ -95,16 +95,20 @@ public static class Program2 {
       for (int i = 0; i < 12; i++) r.SetConnected(i, true);
       int t = 0; r.Tick(t++);
       Check(r.Phase == RoundPhase.Select && r.RoundNumber == 1, "12명 접속 → 1라운드 준비 단계");
-      Check(r.PickClass(2, PlayerClass.Wizard) && r.PickClass(3, PlayerClass.Wizard), "준비 단계에서 마법사 선택");
-      Check(r.GetPick(2) == PlayerClass.Wizard, "팀원에게 보일 선택값");
+      Check(r.PickClass(2, PlayerClass.King), "준비 단계에서 왕 선택");
+      Check(!r.PickClass(3, PlayerClass.King) && r.GetPick(3) == PlayerClass.Knight, "같은 팀 두 번째 왕 거부");
+      Check(r.PickClass(8, PlayerClass.King), "상대 팀은 따로 왕 1명 가능");
+      Check(r.PickClass(2, PlayerClass.Knight) && r.PickClass(3, PlayerClass.King) && r.PickClass(2, PlayerClass.King) == false, "왕 내려놓으면 다른 팀원이 왕 가능");
+      r.PickClass(3, PlayerClass.Knight); r.PickClass(2, PlayerClass.King);
+      Check(r.GetPick(2) == PlayerClass.King, "팀원에게 보일 선택값");
       while (r.Phase == RoundPhase.Select) r.Tick(t++);
-      Check(r.Phase == RoundPhase.Live && r.Class[2] == PlayerClass.Wizard && r.Class[0] == PlayerClass.Knight, "라운드 시작 시 직업 확정");
-      Check(!r.PickClass(0, PlayerClass.Wizard), "라운드 중 직업 변경 불가");
+      Check(r.Phase == RoundPhase.Live && r.Class[2] == PlayerClass.King && r.Class[0] == PlayerClass.Knight, "라운드 시작 시 직업 확정");
+      Check(!r.PickClass(0, PlayerClass.King), "라운드 중 직업 변경 불가");
       for (int i = 6; i < 12; i++) r.Kill(i);
       r.Tick(t++);
       Check(r.Phase == RoundPhase.RoundEnd && r.Score[0] == 1, "상대 전멸 → 팀0 득점");
       while (r.Phase == RoundPhase.RoundEnd) r.Tick(t++);
-      Check(r.Phase == RoundPhase.Select && r.RoundNumber == 2 && r.Class[2] == PlayerClass.Wizard, "2라운드: 안 고르면 이전 직업 유지");
+      Check(r.Phase == RoundPhase.Select && r.RoundNumber == 2 && r.Class[2] == PlayerClass.King, "2라운드: 안 고르면 이전 직업 유지");
       while (r.Phase == RoundPhase.Select) r.Tick(t++);
       Check(r.AliveCount(1) == 6, "새 라운드 전원 부활");
       r.SetConnected(7, false);
@@ -112,11 +116,11 @@ public static class Program2 {
       Check(r.Score[0] == 2, "시간 초과 → 생존자 많은 팀 득점 (나간 유저는 사망 처리)");
     }
 
-    Console.WriteLine("[마법사]");
+    Console.WriteLine("[왕]");
     {
       var r = new RoundRules(RoundConfig.Default, TR);
       for (int i = 0; i < 12; i++) r.SetConnected(i, true);
-      int t = 0; r.Tick(t++); r.PickClass(0, PlayerClass.Wizard); r.PickClass(1, PlayerClass.Wizard);
+      int t = 0; r.Tick(t++); r.PickClass(0, PlayerClass.King); r.PickClass(6, PlayerClass.King);
       while (r.Phase == RoundPhase.Select) r.Tick(t++);
       var sim = new MonsterSim(1000, TR, LaneConfig.Default);
       var w = new WizardRules(12, TR, teamMonsterCap: 5);
@@ -127,10 +131,9 @@ public static class Program2 {
       Check(w.TrySummon(2, 0, r, sim) == WizardRules.SummonResult.NotWizard, "기사는 소환 불가");
       for (int i = 0; i < TR * 3; i++) w.Tick(i, r);
       Check(Math.Abs(w.Mana(0) - 56f) < 0.6f, $"3초 회복 (+36) → 약 56 (got {w.Mana(0):F1})");
-      int ok = 1; while (w.TrySummon(1, 0, r, sim) == WizardRules.SummonResult.Ok) ok++;
-      var last = w.TrySummon(0, 0, r, sim);
-      Check(sim.AliveInTeam(0) == 5 && last == WizardRules.SummonResult.TeamCap, $"팀 상한 5 공유 → 두 마법사 합쳐 5마리에서 거부 (got {sim.AliveInTeam(0)}, {last})");
-      Check(w.TryBuff(0, 1, 5, 20, t, r) && w.TeamBuffs[0].IsActive(t) && !w.TeamBuffs[0].IsActive(t + 5 * TR), "팀 버프 5초 지속");
+      var last = WizardRules.SummonResult.Ok; while ((last = w.TrySummon(0, 0, r, sim)) == WizardRules.SummonResult.Ok) { }
+      Check(sim.AliveInTeam(0) == 5 && last == WizardRules.SummonResult.TeamCap, $"팀 상한 5 → 5마리에서 거부 (got {sim.AliveInTeam(0)}, {last})");
+      Check(w.TryBuff(0, 1, 5, 10, t, r) && w.TeamBuffs[0].IsActive(t) && !w.TeamBuffs[0].IsActive(t + 5 * TR), "팀 버프 5초 지속");
     }
 
     Console.WriteLine(fail == 0 ? "ALL OK" : $"FAILURES: {fail}");

@@ -189,7 +189,7 @@ namespace KnifeWar.Game
                 _pendingPick[p] = -1;
                 _bots[p] = new BotBrain(Avatars[p], 1000 + p * 17);
                 int local = p % PlayersPerTeam;
-                _bots[p].PreferredClass = (local == 4 || local == 5) ? PlayerClass.Wizard : PlayerClass.Knight;
+                _bots[p].PreferredClass = local == 5 ? PlayerClass.King : PlayerClass.Knight;   // 왕은 팀당 1명
             }
             _human.Sensitivity = PlayerPrefs.GetFloat("kw.sensitivity", 2.0f);
         }
@@ -449,7 +449,12 @@ namespace KnifeWar.Game
             // 직업 선택
             for (int p = 0; p < MaxPlayers; p++)
             {
-                if (_pendingPick[p] >= 0) Round.PickClass(p, (PlayerClass)_pendingPick[p]);
+                if (_pendingPick[p] >= 0 && !Round.PickClass(p, (PlayerClass)_pendingPick[p]) && _pendingPick[p] == (int)PlayerClass.King
+                    && Round.Phase == RoundPhase.Select && tick - _kingTakenMsgTick[p] >= TickRate)   // 1초에 한 번만 알림
+                {
+                    _kingTakenMsgTick[p] = tick;
+                    Emit(new GameEvent { Type = GameEventType.Message, A = p, B = (int)GameMessage.KingTaken });
+                }
                 _pendingPick[p] = -1;
             }
 
@@ -571,6 +576,7 @@ namespace KnifeWar.Game
             if (i.PickClass >= 0) _pendingPick[p] = i.PickClass;
         }
 
+        readonly int[] _kingTakenMsgTick = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Repeat(int.MinValue / 2, 32));
         void Emit(in GameEvent e) => TickEvents.Add(e);
 
         static GameMessage SummonMessage(WizardRules.SummonResult r)
@@ -579,7 +585,7 @@ namespace KnifeWar.Game
             {
                 case WizardRules.SummonResult.NoMana: return GameMessage.NoMana;
                 case WizardRules.SummonResult.TeamCap: return GameMessage.TeamCap;
-                case WizardRules.SummonResult.NotWizard: return GameMessage.NotWizard;
+                case WizardRules.SummonResult.NotWizard: return GameMessage.NotKing;
                 default: return GameMessage.SummonFail;
             }
         }

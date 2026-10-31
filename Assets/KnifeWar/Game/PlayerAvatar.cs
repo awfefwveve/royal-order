@@ -15,7 +15,7 @@ namespace KnifeWar.Game
         public KnifeAttack Attack;  // 이번에 누른 공격
         public sbyte Summon;        // -1 = 없음, 0~2 = 몬스터 종류
         public bool Buff;
-        public sbyte PickClass;     // -1 = 없음, 0 = 기사, 1 = 마법사
+        public sbyte PickClass;     // -1 = 없음, 0 = 기사, 1 = 왕
     }
 
     /// <summary>예측·보정에 필요한 이동 상태.</summary>
@@ -121,7 +121,7 @@ namespace KnifeWar.Game
         {
             Alive = alive;
             if (Body != null) Body.enabled = alive;
-            if (WizardHat != null) WizardHat.SetActive(alive && Class == PlayerClass.Wizard);
+            if (WizardHat != null) WizardHat.SetActive(alive && Class == PlayerClass.King);
             _cc.enabled = alive && Drive == AvatarDrive.Simulated;
             if (Knife != null) Knife.gameObject.SetActive(alive && Class == PlayerClass.Knight && !HideEyeKnife);
             if (Model != null) Model.Refresh();
@@ -132,7 +132,7 @@ namespace KnifeWar.Game
             if (Class == c && _classApplied) return;
             _classApplied = true;
             Class = c;
-            if (WizardHat != null) WizardHat.SetActive(Alive && c == PlayerClass.Wizard);
+            if (WizardHat != null) WizardHat.SetActive(Alive && c == PlayerClass.King);
             if (Knife != null) Knife.gameObject.SetActive(Alive && c == PlayerClass.Knight && !HideEyeKnife);
             if (Model != null) Model.Refresh();
         }

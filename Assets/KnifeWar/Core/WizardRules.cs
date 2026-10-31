@@ -3,9 +3,9 @@ using System;
 namespace KnifeWar.Core
 {
     /// <summary>
-    /// 마법사 소환 경제 (서버 전용).
-    /// - 마법사마다 마나가 차고, 몬스터 종류별 코스트를 내고 소환한다.
-    /// - 팀 전체 필드 몬스터 상한(벤치마크로 확정할 값)을 넘으면 소환 거부. 마법사가 여러 명이면 상한을 나눠 쓴다.
+    /// 왕 소환 경제 (서버 전용).
+    /// - 왕마다 마나가 차고, 몬스터 종류별 코스트를 내고 소환한다.
+    /// - 팀 전체 필드 몬스터 상한(벤치마크로 확정할 값)을 넘으면 소환 거부. 팀당 왕 1명이 상한을 다 쓴다.
     /// - 버프는 대상(몬스터/아군 기사)이 기획 미정이라, 지속시간이 있는 팀 버프 슬롯만 만들어 둔다.
     /// 수치는 전부 임시.
     /// </summary>
@@ -47,12 +47,12 @@ namespace KnifeWar.Core
             TeamBuffs[1].Clear();
         }
 
-        /// <summary>마법사이고 살아 있는 플레이어만 마나가 찬다.</summary>
+        /// <summary>왕이고 살아 있는 플레이어만 마나가 찬다.</summary>
         public void Tick(int tick, RoundRules round)
         {
             for (int i = 0; i < MaxPlayers; i++)
             {
-                if (round.Class[i] != PlayerClass.Wizard || !round.Alive[i]) continue;
+                if (round.Class[i] != PlayerClass.King || !round.Alive[i]) continue;
                 _milliMana[i] = Math.Min(MaxMana * 1000, _milliMana[i] + _regenMilliPerTick);
             }
         }
@@ -63,7 +63,7 @@ namespace KnifeWar.Core
         public SummonResult TrySummon(int player, byte monsterType, RoundRules round, MonsterSim sim)
         {
             if (round.Phase != RoundPhase.Live) return SummonResult.NotLive;
-            if (round.Class[player] != PlayerClass.Wizard) return SummonResult.NotWizard;
+            if (round.Class[player] != PlayerClass.King) return SummonResult.NotWizard;
             if (!round.Alive[player]) return SummonResult.Dead;
 
             int cost = CostOf(monsterType) * 1000;
@@ -80,7 +80,7 @@ namespace KnifeWar.Core
         /// <summary>팀 버프 시전 (임시: 같은 버프는 지속시간만 갱신).</summary>
         public bool TryBuff(int player, int buffId, int durationSec, int manaCost, int tick, RoundRules round)
         {
-            if (round.Phase != RoundPhase.Live || round.Class[player] != PlayerClass.Wizard || !round.Alive[player]) return false;
+            if (round.Phase != RoundPhase.Live || round.Class[player] != PlayerClass.King || !round.Alive[player]) return false;
             if (_milliMana[player] < manaCost * 1000) return false;
             _milliMana[player] -= manaCost * 1000;
             TeamBuffs[round.Team[player]].Apply(buffId, tick + durationSec * TickRate);

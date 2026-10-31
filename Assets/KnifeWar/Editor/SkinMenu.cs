@@ -36,7 +36,7 @@ namespace KnifeWar.EditorTools
             int warnings = 0;
             void Warn(string s) { warnings++; Debug.LogWarning("[KnifeWar] 스킨: " + s); }
 
-            foreach (var (name, prefab) in new[] { ("파랑 기사", skin.Team0Knight), ("파랑 마법사", skin.Team0Wizard), ("빨강 기사", skin.Team1Knight), ("빨강 마법사", skin.Team1Wizard) })
+            foreach (var (name, prefab) in new[] { ("파랑 기사", skin.Team0Knight), ("파랑 왕", skin.Team0Wizard), ("빨강 기사", skin.Team1Knight), ("빨강 왕", skin.Team1Wizard) })
             {
                 if (prefab == null) continue;
                 var anim = prefab.GetComponentInChildren<Animator>();

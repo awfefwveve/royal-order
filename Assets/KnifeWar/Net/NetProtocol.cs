@@ -95,8 +95,8 @@ namespace KnifeWar.Net
             w.Byte((byte)Mathf.RoundToInt(Mathf.Clamp01(p.Crouch) * 255f));
             byte flags = 0;
             if (p.Alive) flags |= 1;
-            if (p.Class == PlayerClass.Wizard) flags |= 2;
-            if (p.Pick == PlayerClass.Wizard) flags |= 4;
+            if (p.Class == PlayerClass.King) flags |= 2;
+            if (p.Pick == PlayerClass.King) flags |= 4;
             w.Byte(flags);
             w.Byte((byte)Mathf.Clamp(p.Hp, 0, 255));
             w.Byte(p.TeleportSeq);
@@ -111,8 +111,8 @@ namespace KnifeWar.Net
             p.Crouch = r.Byte() / 255f;
             byte flags = r.Byte();
             p.Alive = (flags & 1) != 0;
-            p.Class = (flags & 2) != 0 ? PlayerClass.Wizard : PlayerClass.Knight;
-            p.Pick = (flags & 4) != 0 ? PlayerClass.Wizard : PlayerClass.Knight;
+            p.Class = (flags & 2) != 0 ? PlayerClass.King : PlayerClass.Knight;
+            p.Pick = (flags & 4) != 0 ? PlayerClass.King : PlayerClass.Knight;
             p.Hp = r.Byte();
             p.TeleportSeq = r.Byte();
             return p;

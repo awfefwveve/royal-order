@@ -61,7 +61,7 @@ namespace KnifeWar.Game
             // ---- 게임 이름·공통 ----
             ["title"] = new[] { "ROYAL ORDER", "ROYAL ORDER", "ROYAL ORDER", "ROYAL ORDER" },   // 임시 게임 이름 (브랜드: ASTREL)
             ["knight"] = new[] { "기사", "Knight", "騎士", "骑士" },
-            ["wizard"] = new[] { "마법사", "Wizard", "魔法使い", "法师" },
+            ["wizard"] = new[] { "왕", "King", "王", "国王" },
             ["me"] = new[] { "나", "Me", "自分", "我" },
             ["team_blue"] = new[] { "블루", "Blue", "ブルー", "蓝" },
             ["team_red"] = new[] { "레드", "Red", "レッド", "红" },
@@ -84,9 +84,9 @@ namespace KnifeWar.Game
             ["class_select"] = new[] { "직업 선택  ({0}초)", "Choose Your Class  ({0}s)", "クラス選択  ({0}秒)", "选择职业  ({0}秒)" },
             ["knight_title"] = new[] { "[1] 황실기사단", "[1] Royal Knight", "[1] 王立騎士団", "[1] 皇家骑士团" },
             ["knight_desc"] = new[] { "칼 — 좌클 베기 / 우클 찌르기", "Blade — LMB slash / RMB stab", "剣 — 左クリック斬り / 右クリック突き", "刀 — 左键斩击 / 右键突刺" },
-            ["wizard_title"] = new[] { "[2] 황실마법사", "[2] Royal Wizard", "[2] 王立魔法使い", "[2] 皇家法师" },
+            ["wizard_title"] = new[] { "[2] 왕 (팀당 1명)", "[2] King (1 per team)", "[2] 王 (チームに1人)", "[2] 国王 (每队1名)" },
             ["wizard_desc"] = new[] { "1·2·3 소환 / Q 버프 (공격 없음)", "1·2·3 summon / Q buff (no attack)", "1·2·3 召喚 / Q バフ (攻撃なし)", "1·2·3 召唤 / Q 增益 (无攻击)" },
-            ["team_counts"] = new[] { "우리 팀: 기사 {0} / 마법사 {1}", "Your team: {0} Knights / {1} Wizards", "味方: 騎士 {0} / 魔法使い {1}", "我方: 骑士 {0} / 法师 {1}" },
+            ["team_counts"] = new[] { "우리 팀: 기사 {0} / 왕 {1}", "Your team: {0} Knights / {1} King", "味方: 騎士 {0} / 王 {1}", "我方: 骑士 {0} / 国王 {1}" },
 
             // ---- 하단 HUD ----
             ["hp"] = new[] { "체력 {0}", "HP {0}", "HP {0}", "生命 {0}" },
@@ -124,7 +124,8 @@ namespace KnifeWar.Game
             // ---- 알림 ----
             ["msg_no_mana"] = new[] { "마나 부족", "Not enough mana", "マナ不足", "法力不足" },
             ["msg_team_cap"] = new[] { "팀 몬스터 상한 도달", "Team monster limit reached", "チームのモンスター上限", "已达队伍怪物上限" },
-            ["msg_not_wizard"] = new[] { "마법사만 소환할 수 있어요 (다음 준비 단계에서 2번)", "Only Wizards can summon (press 2 next round)", "召喚は魔法使いのみ (次のラウンドで2)", "只有法师能召唤 (下回合按 2)" },
+            ["msg_not_king"] = new[] { "왕만 소환할 수 있어요 (다음 준비 단계에서 2번)", "Only the King can summon (press 2 next round)", "召喚は王のみ (次のラウンドで2)", "只有国王能召唤 (下回合按 2)" },
+            ["msg_king_taken"] = new[] { "이미 우리 팀에 왕이 있어요", "Your team already has a King", "既に味方に王がいます", "我方已有国王" },
             ["msg_buff_ok"] = new[] { "버프 발동: 아군 기사 이동속도 +15% (8초)", "Buff: allied Knights +15% speed (8s)", "バフ発動: 味方騎士の移動速度 +15% (8秒)", "增益: 友方骑士移速 +15% (8秒)" },
             ["msg_buff_fail"] = new[] { "버프 실패 (마나 부족)", "Buff failed (not enough mana)", "バフ失敗 (マナ不足)", "增益失败 (法力不足)" },
             ["msg_summon_fail"] = new[] { "소환 실패", "Summon failed", "召喚失敗", "召唤失败" },

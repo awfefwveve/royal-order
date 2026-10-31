@@ -25,7 +25,7 @@ namespace KnifeWar.Game
 
     public enum KillHow : byte { Slash = 0, Stab = 1, Head = 2, Backstab = 3, Fall = 4, Monster = 5 }
 
-    public enum GameMessage : byte { NoMana = 0, TeamCap = 1, NotWizard = 2, SummonFail = 3, BuffOk = 4, BuffFail = 5 }
+    public enum GameMessage : byte { NoMana = 0, TeamCap = 1, NotKing = 2, SummonFail = 3, BuffOk = 4, BuffFail = 5, KingTaken = 6 }
 
     /// <summary>서버에서 일어난 일 하나. 호스트는 바로 처리하고, 클라에는 네트워크로 그대로 보낸다.</summary>
     public struct GameEvent
@@ -56,7 +56,8 @@ namespace KnifeWar.Game
             {
                 case GameMessage.NoMana: return L.T("msg_no_mana");
                 case GameMessage.TeamCap: return L.T("msg_team_cap");
-                case GameMessage.NotWizard: return L.T("msg_not_wizard");
+                case GameMessage.NotKing: return L.T("msg_not_king");
+                case GameMessage.KingTaken: return L.T("msg_king_taken");
                 case GameMessage.BuffOk: return L.T("msg_buff_ok");
                 case GameMessage.BuffFail: return L.T("msg_buff_fail");
                 default: return L.T("msg_summon_fail");
