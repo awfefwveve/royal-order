@@ -15,6 +15,7 @@ namespace KnifeWar.Game
 
         bool _menu, _settings;
         public static bool ForceScoreboard;   // 쇼케이스 촬영용
+        public static bool ShowcaseMode;      // 쇼케이스 촬영 중: 조작 안내 문구 숨김
         float _fpsT, _fps;
 
         public void Init(MatchController m) => _m = m;
@@ -106,7 +107,7 @@ namespace KnifeWar.Game
             if (GameSettings.ShowFps) Label(new Rect(w - 110, 8, 100, 22), Mathf.RoundToInt(_fps) + " FPS", _small, Color.white);
 
             // 커서 안내
-            if (!_menu && Cursor.lockState != CursorLockMode.Locked && r.Phase != RoundPhase.MatchEnd)
+            if (!_menu && !ShowcaseMode && Cursor.lockState != CursorLockMode.Locked && r.Phase != RoundPhase.MatchEnd)
                 Label(new Rect(0, h * 0.5f + 60, w, 30), L.T("click_to_start"), _center, Color.white);
 
             if (_menu && _settings) { if (!SettingsWindow.Draw(w, h)) _settings = false; }
