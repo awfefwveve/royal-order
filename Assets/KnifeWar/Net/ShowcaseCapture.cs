@@ -64,36 +64,38 @@ namespace KnifeWar.Net
                 yield return CamShot("king_summon", kp - fwd * 3.2f + Vector3.up * 2.4f + Vector3.forward * 0.8f, kp + fwd * 10f + Vector3.up * 0.6f, 70f);
             }
 
-            // 기사끼리 붙은 순간: 우리 기사 어깨 너머로 적을 담는다 (2장)
-            for (int shot = 0; shot < 2; shot++)
-            {
-                Time.timeScale = 2f;
-                int a = -1, e = -1;
-                float end = Time.realtimeSinceStartup + 40f;
-                while (Time.realtimeSinceStartup < end && !FindDuel(_m.Human.Team, 3.5f, out a, out e)) yield return null;
-                Time.timeScale = 1f;
-                if (a < 0) { Log("근접전 못 찾음"); break; }
-                var ap = _m.Avatars[a].transform.position;
-                var ep = _m.Avatars[e].transform.position;
-                Vector3 d = ep - ap; d.y = 0f; d.Normalize();
-                Vector3 side = Vector3.Cross(Vector3.up, d) * (shot == 0 ? 0.7f : -0.7f);
-                yield return CamShot(shot == 0 ? "knight_duel" : "knight_duel2", ap - d * 2.4f + side + Vector3.up * 1.9f, ep + Vector3.up * 1.1f, 62f);
-                yield return Wait(2.5f);
-            }
-
-            // 전투 중인 곳을 비스듬히 위에서
-            if (FindDuel(_m.Human.Team, 8f, out int a2, out int e2))
-            {
-                var mid = (_m.Avatars[a2].transform.position + _m.Avatars[e2].transform.position) * 0.5f;
-                yield return CamShot("battle_wide", mid + new Vector3(-6f, 7f, -11f), mid + Vector3.up * 0.8f, 55f);
-            }
+            // 전체 모습 (위에서) + 점수판: 라운드 중일 때 먼저
             yield return Overview("overview_bridge");
-
-            // 점수판
             GameHud.ForceScoreboard = true;
             yield return Wait(0.4f);
             yield return Shot("scoreboard");
             GameHud.ForceScoreboard = false;
+
+            // 기사끼리 붙은 순간: 우리 기사 어깨 너머로 적을 담는다 (최대 3장, 라운드가 끝나면 그만)
+            for (int shot = 0; shot < 3 && _m.Round.Phase == RoundPhase.Live; shot++)
+            {
+                Time.timeScale = 2f;
+                int a = -1, e = -1;
+                float end = Time.realtimeSinceStartup + 20f;
+                while (Time.realtimeSinceStartup < end && _m.Round.Phase == RoundPhase.Live && !FindDuel(_m.Human.Team, 3.5f, out a, out e)) yield return null;
+                Time.timeScale = 1f;
+                if (a < 0 || _m.Round.Phase != RoundPhase.Live) { Log("근접전 못 찾음"); break; }
+                var ap = _m.Avatars[a].transform.position;
+                var ep = _m.Avatars[e].transform.position;
+                Vector3 d = ep - ap; d.y = 0f; d.Normalize();
+                if (shot == 2)
+                {
+                    // 비스듬히 위에서 넓게
+                    var mid = (ap + ep) * 0.5f;
+                    yield return CamShot("battle_wide", mid - d * 7f + Vector3.Cross(Vector3.up, d) * 6f + Vector3.up * 6f, mid + Vector3.up * 0.8f, 55f);
+                }
+                else
+                {
+                    Vector3 side = Vector3.Cross(Vector3.up, d) * (shot == 0 ? 0.7f : -0.7f);
+                    yield return CamShot(shot == 0 ? "knight_duel" : "knight_duel2", ap - d * 2.4f + side + Vector3.up * 1.9f, ep + Vector3.up * 1.1f, 62f);
+                }
+                yield return Wait(1.5f);
+            }
             GameHud.ShowcaseMode = false;
 
             Log($"끝 ({_n}장)");
@@ -145,7 +147,7 @@ namespace KnifeWar.Net
             cam.farClipPlane = 600f;
             go.transform.position = pos;
             go.transform.rotation = Quaternion.LookRotation(look - pos);
-            yield return null;
+            yield return Wait(0.2f);
             yield return Shot(name);
             Destroy(go);
         }
