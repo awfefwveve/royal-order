@@ -14,6 +14,7 @@ namespace KnifeWar.Game
         Texture2D _white;
 
         bool _menu, _settings;
+        public static bool ForceScoreboard;   // 쇼케이스 촬영용
         float _fpsT, _fps;
 
         public void Init(MatchController m) => _m = m;
@@ -101,7 +102,7 @@ namespace KnifeWar.Game
             if (Time.time < _m.LastSummonMessageUntil)
                 Label(new Rect(0, h * 0.62f, w, 30), _m.LastSummonMessage, _center, new Color(1f, 0.9f, 0.5f));
 
-            if ((!_menu && GameSettings.Held(Bind.Scoreboard)) || r.Phase == RoundPhase.MatchEnd) DrawScoreboard(w, h);
+            if ((!_menu && (ForceScoreboard || GameSettings.Held(Bind.Scoreboard))) || r.Phase == RoundPhase.MatchEnd) DrawScoreboard(w, h);
             if (GameSettings.ShowFps) Label(new Rect(w - 110, 8, 100, 22), Mathf.RoundToInt(_fps) + " FPS", _small, Color.white);
 
             // 커서 안내

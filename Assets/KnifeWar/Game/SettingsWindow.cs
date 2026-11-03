@@ -9,6 +9,7 @@ namespace KnifeWar.Game
     public static class SettingsWindow
     {
         static int _tab;
+        public static int Tab { get => _tab; set => _tab = value; }
         static int _waiting = -1;    // 키 입력 기다리는 Bind
         static bool _screenDirty;
         static GUIStyle _h, _t, _s;

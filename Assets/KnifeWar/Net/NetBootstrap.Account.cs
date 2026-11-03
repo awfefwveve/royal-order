@@ -18,6 +18,7 @@ namespace KnifeWar.Net
         AccountMode _accMode = AccountMode.Login;
         string _email = "", _password = "", _password2 = "", _regName = "", _code = "";
         bool _agreeTerms, _age14;
+        internal void ShowcaseRegister(bool on) { _accMode = on ? AccountMode.Register : AccountMode.Login; _email = on ? "player@example.com" : ""; _regName = on ? "Bojung" : ""; _agreeTerms = _age14 = on; }
         [Serializable] sealed class TermsInfo { public string termsVersion; public string termsUrl; public string privacyUrl; }
         TermsInfo _terms;
         bool _termsLoading;

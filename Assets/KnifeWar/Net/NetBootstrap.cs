@@ -101,6 +101,7 @@ namespace KnifeWar.Net
             _address = PlayerPrefs.GetString("kw.address", _address);
             _backendUrl = PlayerPrefs.GetString("kw.backend", DefaultBackend);
             ErrorReporter.Install(_backendUrl);
+            ShowcaseCapture.TryStart(this, _m);
             _playerName = PlayerPrefs.GetString("kw.name", Environment.UserName ?? "Player");
             if (!Application.isEditor) BuildLog.Install();
             MatchController.LeaveHandler = null;
@@ -540,6 +541,8 @@ namespace KnifeWar.Net
         // ------------------------------------------------------------------
 
         bool _settingsOpen;
+        internal bool ShowcaseSettings { set => _settingsOpen = value; }
+        internal void ShowcaseStartOffline() => StartOffline();
 
         void OnGUI()
         {

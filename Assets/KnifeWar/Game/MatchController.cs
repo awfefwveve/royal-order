@@ -228,6 +228,9 @@ namespace KnifeWar.Game
             return true;
         }
 
+        /// <summary>쇼케이스(스크린샷 자동 촬영)용: 봇이 고를 직업을 바꾼다.</summary>
+        public void ShowcaseSetClass(int slot, PlayerClass c) { if (slot >= 0 && slot < MaxPlayers) _bots[slot].PreferredClass = c; }
+
         /// <summary>몇 선승인지 바꾼다 (Begin 전에만, 테스트용 짧은 경기 등).</summary>
         public void ConfigureRounds(int roundsToWin)
         {

@@ -12,6 +12,7 @@ namespace KnifeWar.Diagnostics
     ///   refresh        — 바뀐 코드 다시 불러오기 (컴파일)
     ///   build_windows  — Builds/Client/KnifeWar.exe
     ///   build_linux    — Builds/LinuxServer/KnifeWarServer.x86_64 (헤드리스 데디 서버)
+    ///   showcase       — 게임 화면을 크게 하고 플레이해서 포트폴리오용 스크린샷을 Logs/showcase/ 에 자동 저장
     /// 게임 코드에 의존하지 않아서 게임 코드가 컴파일 실패해도 동작한다.
     /// </summary>
     [InitializeOnLoad]
@@ -25,6 +26,36 @@ namespace KnifeWar.Diagnostics
         {
             EditorApplication.update -= Poll;
             EditorApplication.update += Poll;
+            EditorApplication.playModeStateChanged -= OnPlayMode;
+            EditorApplication.playModeStateChanged += OnPlayMode;
+        }
+
+        static void OnPlayMode(PlayModeStateChange s)
+        {
+            if (s != PlayModeStateChange.EnteredEditMode || !SessionState.GetBool("kw.showcase.max", false)) return;
+            SessionState.SetBool("kw.showcase.max", false);
+            var gv = GameView(false);
+            if (gv != null) gv.maximized = false;
+        }
+
+        static EditorWindow GameView(bool create)
+        {
+            var t = Type.GetType("UnityEditor.GameView,UnityEditor");
+            if (t == null) return null;
+            var all = Resources.FindObjectsOfTypeAll(t);
+            if (all.Length > 0) return (EditorWindow)all[0];
+            return create ? EditorWindow.GetWindow(t) : null;
+        }
+
+        static void Showcase()
+        {
+            if (!File.Exists(ScenePath)) { Debug.LogError("[claude-cmd] 게임 씬이 없음"); return; }
+            if (UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene().path != ScenePath)
+                UnityEditor.SceneManagement.EditorSceneManager.OpenScene(ScenePath);
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(CmdPath), "claude_showcase.txt"), "1");
+            var gv = GameView(true);
+            if (gv != null) { gv.Focus(); gv.maximized = true; SessionState.SetBool("kw.showcase.max", true); }
+            EditorApplication.isPlaying = true;
         }
 
         static void Poll()
@@ -53,6 +84,9 @@ namespace KnifeWar.Diagnostics
                         case "build_windows":
                             Build(BuildTarget.StandaloneWindows64, "Builds/Client/KnifeWar.exe", false);
                             break;
+                        case "showcase":
+                            Showcase();
+                            return;   // 플레이 모드로 들어가므로 남은 명령은 다음에
                         case "build_linux":
                             Build(BuildTarget.StandaloneLinux64, "Builds/LinuxServer/KnifeWarServer.x86_64", true);
                             break;
