@@ -31,6 +31,17 @@ namespace KnifeWar.Net
             bool testLaunch = !FromWeb && Array.IndexOf(Environment.GetCommandLineArgs(), "-kw") >= 0;
             if (testLaunch) return;   // 여러 클라 띄우는 시험은 막지 않음
 
+            // ASTREL 런처가 깔려 있는데 런처 밖에서 켰으면(바탕화면 아이콘·옛 주소) 런처로 넘김
+            // → 런처가 패치 확인 + ASTREL 계정으로 로그인시켜 다시 켠다 (라이엇·배틀넷과 같음)
+            bool fromLauncher = Array.IndexOf(Environment.GetCommandLineArgs(), "-launcher") >= 0;
+            if (!fromLauncher && Reg(@"query HKCU\Software\Classes\astrel\shell\open\command /ve"))
+            {
+                Debug.Log("[KnifeWar] 런처로 실행 → ASTREL 런처로 넘김");
+                Application.OpenURL("astrel://play/royalorder");
+                Application.Quit();
+                return;
+            }
+
             try
             {
                 _mutex = new Mutex(true, MutexName, out bool created);

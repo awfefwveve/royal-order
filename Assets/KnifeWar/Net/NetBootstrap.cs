@@ -48,6 +48,7 @@ namespace KnifeWar.Net
         static class Session
         {
             public static bool Has;
+            public static bool TicketUsed;   // 런처 -ticket 은 한 번만
             public static string Address;
             public static ushort Port;
             public static string Token;

@@ -147,6 +147,24 @@ namespace KnifeWar.Net
             yield return null;
             if (_started) yield break;
             _email = PlayerPrefs.GetString("kw.email", "");
+
+            // ASTREL 런처로 켠 경우: 런처가 넘긴 2분짜리 코드로 그 계정에 바로 로그인 (로그인 화면 없음)
+            string ticket = TakeLauncherTicket();
+            if (!string.IsNullOrEmpty(ticket))
+            {
+                bool done = false;
+                var api0 = new BackendClient(_backendUrl.Trim()) { Token = null };
+                yield return api0.Post("/auth/code/redeem", $"{{\"code\":\"{BackendClient.Escape(ticket)}\"}}", (code, text) =>
+                {
+                    if (code != 200) return;
+                    var r = JsonUtility.FromJson<LoginResponse>(text);
+                    SaveSession(r.token);
+                    _profile = r.account;
+                    done = true;
+                });
+                if (done) { yield return ResumeParty(); yield break; }
+            }
+
             string token = !string.IsNullOrEmpty(Session.ApiToken) ? Session.ApiToken : PlayerPrefs.GetString("kw.session", "");
             string backend = !string.IsNullOrEmpty(Session.ApiBackend) ? Session.ApiBackend : PlayerPrefs.GetString("kw.session_backend", "");
             if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(backend)) yield break;
@@ -164,6 +182,17 @@ namespace KnifeWar.Net
             _backendUrl = backend;
 
             yield return ResumeParty();
+        }
+
+        /// <summary>실행 인자 -ticket (런처가 넘김). 한 번만 쓰고, 웹 주소로 켜진 경우는 무시.</summary>
+        static string TakeLauncherTicket()
+        {
+            if (Session.TicketUsed || AppInstance.FromWeb) return null;
+            Session.TicketUsed = true;
+            var args = Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length - 1; i++)
+                if (args[i] == "-ticket") return args[i + 1].Length <= 100 ? args[i + 1] : null;
+            return null;
         }
 
         void SaveSession(string token)

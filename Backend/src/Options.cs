@@ -13,6 +13,7 @@ public sealed class KnifeWarOptions
     public SmtpOptions Smtp { get; set; } = new();
     public ClientOptions Client { get; set; } = new();
     public SteamOptions Steam { get; set; } = new();
+    public AstrelAccountOptions Astrel { get; set; } = new();
     public MatchmakingOptions Matchmaking { get; set; } = new();
     public List<RegionOptions> Regions { get; set; } = new();
 }
@@ -43,6 +44,16 @@ public sealed class SmtpOptions
     public string Password { get; set; } = "";
     public string From { get; set; } = "";
     public bool EnableSsl { get; set; } = true;
+}
+
+/// <summary>
+/// ASTREL 계정 = 회사 홈페이지 로그인(Firebase). 홈페이지·런처·게임이 같은 계정을 쓴다.
+/// ProjectId 가 비면 꺼짐. 홈페이지 주소는 CORS 로 허용.
+/// </summary>
+public sealed class AstrelAccountOptions
+{
+    public string FirebaseProjectId { get; set; } = "gokgwaengi";
+    public List<string> WebOrigins { get; set; } = new() { "https://astrelgames.com", "https://www.astrelgames.com" };
 }
 
 public sealed class SteamOptions

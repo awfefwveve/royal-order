@@ -51,9 +51,12 @@ var mm = new Matchmaker(opt, store, servers, tokens, Log);
 var parties = new PartyService(mm);
 var serverSecret = Encoding.UTF8.GetBytes(opt.ServerSecret);
 var mailer = new Mailer(opt.Smtp, Log);
+var astrel = new FirebaseAuth(opt.Astrel.FirebaseProjectId, new HttpClient { Timeout = TimeSpan.FromSeconds(10) });
+var codes = new OneTimeCodes();
 var accountLock = new object();   // 가입·이름 변경 (이메일·이름#태그 중복 방지)
 
 var http = new HttpServer(cfg.Prefixes(), Log);
+foreach (var o in opt.Astrel.WebOrigins) http.CorsOrigins.Add(o.TrimEnd('/'));
 if (!string.IsNullOrEmpty(opt.Client.PatchDir))
     http.StaticDir = Path.IsPathRooted(opt.Client.PatchDir) ? opt.Client.PatchDir : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(cfgPath)) ?? baseDir, opt.Client.PatchDir);
 
@@ -239,6 +242,68 @@ http.MapAsync("POST", "/auth/steam", async r =>
     var req = r.Json<SteamLogin>();
     string steamId = req == null ? null : await steam.VerifyAsync(req.Ticket, CancellationToken.None);
     return steamId == null ? Status(401) : Ok(Login(Upsert("steam", steamId, req.Name)));
+});
+
+// ---------------------------------------------------------------- ASTREL 계정 (홈페이지·런처·게임 공통)
+// 홈페이지(Firebase) 로그인 토큰 → 게임 계정. 같은 이메일로 만든 자체 계정이 있고 둘 다 인증됐으면 그 계정으로 이어짐.
+http.MapAsync("POST", "/auth/astrel", async r =>
+{
+    if (opt.Client.Maintenance) return Status(503, new { error = "maintenance", notice = opt.Client.Notice });
+    var req = r.Json<AstrelLogin>();
+    var u = req == null ? null : await astrel.VerifyAsync(req.IdToken, CancellationToken.None);
+    if (u == null) return Status(401);
+    Account a;
+    lock (accountLock)
+    {
+        a = store.FindAccount("astrel", u.Uid);
+        if (a == null && u.EmailVerified && ValidEmail(u.Email))
+        {
+            var byEmail = store.FindAccount("email", u.Email.Trim().ToLowerInvariant());
+            if (byEmail != null && byEmail.Extra.EmailVerified) a = byEmail;
+        }
+        long now = TokenService.Now();
+        if (a == null)
+        {
+            string name = CleanName(string.IsNullOrWhiteSpace(u.Name) ? u.Email.Split('@')[0] : u.Name);
+            a = new Account { Id = Guid.NewGuid().ToString("N")[..16], Provider = "astrel", ExternalId = u.Uid, Name = name, CreatedAt = now };
+            a.Extra.Tag = NewTag(name);
+            a.Extra.Email = u.Email;
+            a.Extra.EmailVerified = u.EmailVerified;
+            Log($"account created (astrel) {a.Id} {a.DisplayId}");
+        }
+        a.LastLoginAt = now;
+        store.SaveAccount(a);
+    }
+    if (a.IsBanned(TokenService.Now())) return Status(403, new { error = "banned", reason = a.Extra.BanReason, until = a.Banned ? 0 : a.Extra.BanUntil });
+    return Ok(Login(a));
+});
+
+// 로그인된 쪽이 한 번 쓰는 코드를 만듦 (2분): 홈페이지 → 런처, 런처 → 게임
+http.Map("POST", "/auth/code", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    string code = codes.Issue(a.Id, a.Extra.TokenVersion);
+    return code == null ? Status(503) : Ok(new { code });
+});
+
+// 코드 → 세션. 한 번 쓰면 끝, 비밀번호 변경·전체 로그아웃 뒤에는 무효.
+http.Map("POST", "/auth/code/redeem", r =>
+{
+    if (opt.Client.Maintenance) return Status(503, new { error = "maintenance", notice = opt.Client.Notice });
+    var req = r.Json<CodeReq>();
+    var v = codes.Redeem(req?.Code);
+    var a = v == null ? null : store.GetAccount(v.Value.account);
+    if (a == null || a.Extra.TokenVersion != v.Value.ver) return Status(401);
+    if (a.IsBanned(TokenService.Now())) return Status(403, new { error = "banned", reason = a.Extra.BanReason, until = a.Banned ? 0 : a.Extra.BanUntil });
+    return Ok(Login(a));
+});
+
+// 세션 연장 (런처가 켤 때): 아직 유효하면 새 30일 토큰
+http.Map("POST", "/auth/refresh", r =>
+{
+    var a = Me(r);
+    return a == null ? Status(401) : Ok(Login(a));
 });
 
 http.Map("GET", "/me", r =>
@@ -778,6 +843,7 @@ public sealed record BanReq(string AccountId, int Hours, string Reason);
 public sealed record IdReq(string Id);
 public sealed record ClientAdminReq(string Version, string Notice, bool? Maintenance);
 public sealed record SteamLogin(string Ticket, string Name);
+public sealed record AstrelLogin(string IdToken);
 public sealed record JoinQueue(Dictionary<string, int> Pings);
 public sealed record PartyJoin(string Code);
 public sealed record PartyKick(string AccountId);

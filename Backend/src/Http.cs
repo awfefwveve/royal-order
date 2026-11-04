@@ -93,6 +93,9 @@ public sealed class HttpServer
             return true;
         }
     }
+    // ---- 브라우저(회사 홈페이지)에서 부를 수 있는 주소. 그 외 사이트는 브라우저가 응답을 못 읽음 ----
+    public HashSet<string> CorsOrigins = new(StringComparer.OrdinalIgnoreCase);
+
     readonly HttpListener _listener = new();
     readonly Action<string> _log;
 
@@ -126,6 +129,16 @@ public sealed class HttpServer
         try
         {
             if (await TryStatic(ctx)) return;
+            string origin = ctx.Request.Headers["Origin"];
+            if (!string.IsNullOrEmpty(origin) && CorsOrigins.Contains(origin))
+            {
+                ctx.Response.Headers["Access-Control-Allow-Origin"] = origin;
+                ctx.Response.Headers["Vary"] = "Origin";
+                ctx.Response.Headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
+                ctx.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST";
+                ctx.Response.Headers["Access-Control-Max-Age"] = "600";
+            }
+            if (ctx.Request.HttpMethod == "OPTIONS") { await Write(ctx, new Res(204, "")); return; }
             if (!Allow(ctx.Request)) { await Write(ctx, Status(429)); return; }
             var req = new Req { Raw = ctx.Request };
             if (ctx.Request.HasEntityBody)
