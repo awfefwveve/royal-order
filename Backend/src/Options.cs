@@ -67,7 +67,7 @@ public sealed class MatchmakingOptions
 {
     public int PlayersPerMatch { get; set; } = 12;
     public int MinHumansToStart { get; set; } = 2;
-    public int FillWithBotsAfterSeconds { get; set; } = 60;
+    public int FillWithBotsAfterSeconds { get; set; } = 0;   // 0 = 경쟁전에 봇을 채우지 않음 (봇과 하려면 사용자 설정 대전)
     public int MmrWindowStart { get; set; } = 100;
     public int MmrWindowGrowPerSecond { get; set; } = 25;
     public int MaxPingMs { get; set; } = 150;

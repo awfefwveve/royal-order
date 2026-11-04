@@ -138,8 +138,13 @@ namespace KnifeWar.EditorTools
                     c.Headers.ContentType = new MediaTypeHeaderValue("application/gzip");
                     return c;
                 }, "no-cache, max-age=0");
-                TryPurge(http, account, new[] { "https://patch.astrelgames.com/server/royalorder-server.tar.gz" });
-                Debug.Log("[server] 올림 → https://patch.astrelgames.com/server/royalorder-server.tar.gz");
+                // 서버 자동 업데이트 스크립트 + 버전 표시 (테스트 서버가 2분마다 version.txt 를 보고 바뀌면 새로 깔고 재시작)
+                if (File.Exists("Deploy/vultr/update.sh"))
+                    PutBytes(http, api, "server/update.sh", File.ReadAllBytes("Deploy/vultr/update.sh"), "text/x-shellscript", "no-cache, max-age=0");
+                string ver = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+                PutBytes(http, api, "server/version.txt", Encoding.UTF8.GetBytes(ver), "text/plain", "no-cache, max-age=0");
+                TryPurge(http, account, new[] { "https://patch.astrelgames.com/server/royalorder-server.tar.gz", "https://patch.astrelgames.com/server/version.txt", "https://patch.astrelgames.com/server/update.sh" });
+                Debug.Log($"[server] 올림 {ver} → https://patch.astrelgames.com/server/ (테스트 서버는 2분 안에 자동 업데이트)");
             }
             catch (Exception e) { Debug.LogError("[server] 실패: " + e.Message); }
         }

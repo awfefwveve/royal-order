@@ -39,7 +39,7 @@ TOKEN_SECRET=$(head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48)
 SERVER_SECRET=$(head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48)
 ADMIN_KEY=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
 
-# Backend config: kr ping URL -> this server, test matchmaking (fill with bots after 20s)
+# Backend config: kr ping URL -> this server, ranked never fills with bots
 python3 - "$PUBLIC_IP" "$API_DOMAIN" <<'PY'
 import json, sys
 ip, domain = sys.argv[1], sys.argv[2]
@@ -50,7 +50,7 @@ k['TokenSecret'] = ''; k['ServerSecret'] = ''   # provided via environment
 k['DataDir'] = '/opt/royalorder/data'
 for r in k['Regions']:
     r['PingUrl'] = f'https://{domain}/ping' if r['Id'] == 'kr' else ''
-k['Matchmaking'].update({'MinHumansToStart': 1, 'FillWithBotsAfterSeconds': 20})
+k['Matchmaking'].update({'FillWithBotsAfterSeconds': 0})   # ranked = humans only; bots via custom rooms
 json.dump(c, open(p, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 PY
 
@@ -137,4 +137,8 @@ echo "* * * * * root /usr/local/bin/royalorder-health" > /etc/cron.d/royalorder-
 if command -v ufw >/dev/null; then
   ufw allow 22/tcp; ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 7777:7786/udp; ufw --force enable
 fi
+# Auto update: every 2 minutes check server/version.txt on the patch CDN (new bundle -> rebuild + restart)
+curl -fsSL https://patch.astrelgames.com/server/update.sh -o /usr/local/bin/royalorder-update && chmod +x /usr/local/bin/royalorder-update
+echo "*/2 * * * * root /usr/local/bin/royalorder-update" > /etc/cron.d/royalorder-update
+curl -fsS https://patch.astrelgames.com/server/version.txt -o /opt/royalorder/version || true
 echo "ROYAL ORDER ready: https://$API_DOMAIN  (DNS A record $API_DOMAIN -> $PUBLIC_IP)"

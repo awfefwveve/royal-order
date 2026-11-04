@@ -284,7 +284,7 @@ public sealed class Matchmaker
                     if (teams == null) continue;   // 묶음 크기 때문에 6:6으로 못 나눔 → 더 기다림
 
                     bool full = players >= M.PlayersPerMatch;
-                    bool fill = wait >= M.FillWithBotsAfterSeconds && players >= M.MinHumansToStart;
+                    bool fill = M.FillWithBotsAfterSeconds > 0 && wait >= M.FillWithBotsAfterSeconds && players >= M.MinHumansToStart;   // 0 = 봇 채우기 안 함 (경쟁전은 사람 12명)
                     if (!full && !fill) continue;
 
                     if (_servers.FreeServers(region) == 0)
