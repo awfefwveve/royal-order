@@ -12,6 +12,7 @@ namespace KnifeWar.Diagnostics
     ///   refresh        — 바뀐 코드 다시 불러오기 (컴파일)
     ///   build_windows  — Builds/Client/KnifeWar.exe
     ///   build_linux    — Builds/LinuxServer/KnifeWarServer.x86_64 (헤드리스 데디 서버)
+    ///   release        — 버전 +1 빌드 → 패치 → R2 업로드 → 설치 파일 (확인 창 없이)
     ///   showcase       — 게임 화면을 크게 하고 플레이해서 포트폴리오용 스크린샷을 Logs/showcase/ 에 자동 저장
     /// 게임 코드에 의존하지 않아서 게임 코드가 컴파일 실패해도 동작한다.
     /// </summary>
@@ -83,6 +84,9 @@ namespace KnifeWar.Diagnostics
                             break;
                         case "build_windows":
                             Build(BuildTarget.StandaloneWindows64, "Builds/Client/KnifeWar.exe", false);
+                            break;
+                        case "release":
+                            if (!EditorApplication.ExecuteMenuItem("KnifeWar/배포/(자동) 확인 없이 한 번에")) Debug.LogError("[claude-cmd] 배포 메뉴를 못 찾음");
                             break;
                         case "showcase":
                             Showcase();

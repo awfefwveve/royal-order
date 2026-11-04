@@ -22,12 +22,36 @@ namespace KnifeWar.EditorTools
         const string ScenePath = "Assets/KnifeWar/Scenes/Game.unity";
         static readonly string[] Exclude = { "version.txt", "kw_launch.txt" };
 
+        [MenuItem("KnifeWar/배포/한 번에: 빌드 + 패치 + 업로드 (버전 +1)", priority = 99)]
+        public static void ReleaseAndUpload()
+        {
+            if (!EditorUtility.DisplayDialog("출시", $"버전 {PlayerSettings.bundleVersion} → {BumpVersion(PlayerSettings.bundleVersion)}\n빌드하고 패치를 만들어 바로 올릴까요?\n(올리면 모든 플레이어가 다음 실행 때 업데이트돼요)", "올리기", "취소")) return;
+            ReleaseAndUploadQuiet();
+        }
+
+        /// <summary>확인 창 없이 (원격 명령 release 용).</summary>
+        [MenuItem("KnifeWar/배포/(자동) 확인 없이 한 번에", priority = 120)]
+        public static void ReleaseAndUploadQuiet()
+        {
+            string ver = BuildReleaseCore();
+            if (ver != null) PatchUploader.Upload(ver);
+        }
+
+        [MenuItem("KnifeWar/배포/올리기만 (마지막 출시 빌드)", priority = 102)]
+        public static void UploadOnly() => PatchUploader.Upload(PlayerSettings.bundleVersion);
+
         [MenuItem("KnifeWar/배포/출시 빌드 + 패치 만들기 (버전 +1)", priority = 100)]
         public static void BuildRelease()
         {
-            if (!File.Exists(ScenePath)) { Debug.LogError("[KnifeWar] 게임 씬이 없어요."); return; }
+            if (!EditorUtility.DisplayDialog("출시 빌드", $"버전 {PlayerSettings.bundleVersion} → {BumpVersion(PlayerSettings.bundleVersion)}\n빌드하고 패치 파일을 만들까요?", "만들기", "취소")) return;
+            BuildReleaseCore();
+        }
+
+        /// <summary>버전 +1, Windows 빌드, 패치 만들기. 성공하면 새 버전, 실패하면 null.</summary>
+        static string BuildReleaseCore()
+        {
+            if (!File.Exists(ScenePath)) { Debug.LogError("[KnifeWar] 게임 씬이 없어요."); return null; }
             string ver = BumpVersion(PlayerSettings.bundleVersion);
-            if (!EditorUtility.DisplayDialog("출시 빌드", $"버전 {PlayerSettings.bundleVersion} → {ver}\n빌드하고 패치 파일을 만들까요?", "만들기", "취소")) return;
             PlayerSettings.bundleVersion = ver;
             AssetDatabase.SaveAssets();
 
@@ -41,7 +65,7 @@ namespace KnifeWar.EditorTools
                 targetGroup = BuildTargetGroup.Standalone,
                 options = BuildOptions.None,
             });
-            if (report.summary.result != BuildResult.Succeeded) { Debug.LogError($"[KnifeWar] 빌드 실패: {report.summary.result}"); return; }
+            if (report.summary.result != BuildResult.Succeeded) { Debug.LogError($"[KnifeWar] 빌드 실패: {report.summary.result}"); return null; }
 
             // 출시에 넣으면 안 되는 것 정리
             foreach (var d in Directory.GetDirectories(gameDir, "*DoNotShip*")) Directory.Delete(d, true);
@@ -49,6 +73,7 @@ namespace KnifeWar.EditorTools
             File.WriteAllText(Path.Combine(gameDir, "version.txt"), ver);
 
             MakePatch(gameDir, ver);
+            return ver;
         }
 
         [MenuItem("KnifeWar/배포/패치만 다시 만들기 (마지막 출시 빌드)", priority = 101)]
@@ -64,11 +89,12 @@ namespace KnifeWar.EditorTools
         {
             string patchDir = Path.GetFullPath($"Builds/Patch/{ver}");
             if (Directory.Exists(patchDir)) Directory.Delete(patchDir, true);
-            string filesDir = Path.Combine(patchDir, "files");
-            Directory.CreateDirectory(filesDir);
+            string blobsDir = Path.Combine(patchDir, "blobs");
+            Directory.CreateDirectory(blobsDir);
 
+            // 파일 내용은 blobs/{sha256} 한 곳에 (같은 내용은 버전이 달라도 한 번만 올라감)
             var sb = new StringBuilder();
-            sb.Append("{\"version\":\"").Append(ver).Append("\",\"files\":[");
+            sb.Append("{\"version\":\"").Append(ver).Append("\",\"blobs\":true,\"files\":[");
             bool first = true;
             long total = 0;
             int count = 0;
@@ -78,9 +104,8 @@ namespace KnifeWar.EditorTools
                 if (Array.IndexOf(Exclude, rel) >= 0 || rel.StartsWith("_update/")) continue;
                 long size = new FileInfo(full).Length;
                 string hash = Sha256(full);
-                string dest = Path.Combine(filesDir, rel);
-                Directory.CreateDirectory(Path.GetDirectoryName(dest));
-                File.Copy(full, dest, true);
+                string dest = Path.Combine(blobsDir, hash);
+                if (!File.Exists(dest)) File.Copy(full, dest, false);
                 if (!first) sb.Append(',');
                 first = false;
                 sb.Append("{\"p\":\"").Append(rel.Replace("\\", "\\\\").Replace("\"", "\\\"")).Append("\",\"s\":").Append(size).Append(",\"h\":\"").Append(hash).Append("\"}");
@@ -90,11 +115,8 @@ namespace KnifeWar.EditorTools
             sb.Append("]}");
             File.WriteAllText(Path.Combine(patchDir, "manifest.json"), sb.ToString());
 
-            Debug.Log($"[KnifeWar] 패치 완료 v{ver}: 파일 {count}개, {total / (1024 * 1024)}MB\n" +
-                      $"  1) {patchDir} 폴더를 CDN의 (PatchBaseUrl)/{ver}/ 로 올리기\n" +
-                      $"  2) 백엔드 최신 버전을 {ver}로 바꾸기 (POST /admin/client {{\"version\":\"{ver}\"}} 또는 KW_CLIENT_VERSION)\n" +
-                      $"  처음 설치 파일: Deploy/installer/KnifeWar.iss 를 Inno Setup으로 컴파일 (Version={ver})");
-            EditorUtility.RevealInFinder(patchDir);
+            Debug.Log($"[KnifeWar] 패치 완료 v{ver}: 파일 {count}개, {total / (1024 * 1024)}MB → {patchDir}\n" +
+                      "  올리기: KnifeWar > 배포 > 올리기만 (Deploy/secrets.env 의 Cloudflare 키 사용)");
         }
 
         static string BumpVersion(string v)

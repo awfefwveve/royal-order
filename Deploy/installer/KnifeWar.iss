@@ -1,12 +1,15 @@
 ; ROYAL ORDER (ASTREL) — 처음 설치 파일 (Inno Setup 6, 무료: https://jrsoftware.org/isinfo.php)
 ; 1) 유니티 메뉴 KnifeWar > 배포 > 출시 빌드 + 패치 만들기
-; 2) 아래 MyVersion을 그 버전으로 바꾸고 Inno Setup에서 이 파일을 열어 Compile → Deploy/installer/Output/KnifeWarSetup-버전.exe
+; 2) 보통은 유니티 메뉴 "KnifeWar > 배포 > 한 번에"가 이 파일을 자동으로 컴파일해서 올린다 (Inno Setup 설치 필요)
 ; 관리자 권한 없이 사용자 폴더(%LocalAppData%\Programs)에 설치 → 게임이 스스로 업데이트 파일을 덮어쓸 수 있다.
 ; 브랜드가 정해지면 MyPublisher·MyName·AppId(새 GUID)·아이콘을 바꾼다.
 
 #define MyName "ROYAL ORDER"
 #define MyPublisher "ASTREL"
-#define MyVersion "0.1.1"
+; 유니티 배포 메뉴가 /DMyVersion=버전 으로 넘겨준다
+#ifndef MyVersion
+  #define MyVersion "0.1.1"
+#endif
 #define MyExe "KnifeWar.exe"
 
 [Setup]

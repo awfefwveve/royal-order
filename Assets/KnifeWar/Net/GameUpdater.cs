@@ -37,7 +37,12 @@ namespace KnifeWar.Net
 
         [Serializable] class VersionDto { public string version; public string patchBaseUrl; public string notice; public bool maintenance; }
         [Serializable] class FileEntry { public string p; public long s; public string h; }
-        [Serializable] class Manifest { public string version; public FileEntry[] files; }
+        [Serializable] class Manifest { public string version; public bool blobs; public FileEntry[] files; }
+        [Serializable] class LatestDto { public string version; public string installer; }
+
+        /// <summary>패치 저장소(CDN). latest.json 에 최신 버전, {버전}/manifest.json 에 파일 목록,
+        /// blobs/{sha256} 에 파일 내용(같은 파일은 한 번만 올라감). 서버가 꺼져 있어도 업데이트된다.</summary>
+        public const string PatchRoot = "https://patch.astrelgames.com/royalorder";
         [Serializable] class CacheEntry { public string p; public long s; public long t; public string h; }
         [Serializable] class Cache { public List<CacheEntry> items = new List<CacheEntry>(); }
 
@@ -67,10 +72,14 @@ namespace KnifeWar.Net
             Current = State.Checking;
             Message = L.T("upd_checking");
             VersionDto info = null;
-            yield return FetchVersion(backendUrl, v => info = v);
-            if (info == null) { Current = State.Skipped; Message = ""; yield break; }   // 백엔드에 못 닿음 → 연습 모드는 가능
-            LatestVersion = info.version ?? "";
-            if (string.IsNullOrEmpty(LatestVersion) || LatestVersion == LocalVersion || string.IsNullOrEmpty(info.patchBaseUrl))
+            yield return FetchVersion(backendUrl, v => info = v);   // 공지·점검 (서버가 꺼져 있으면 없음)
+            LatestDto latest = null;
+            yield return FetchLatest(l => latest = l);              // 최신 버전은 CDN이 기준
+            string root = PatchRoot;
+            if (latest != null && !string.IsNullOrEmpty(latest.version)) LatestVersion = latest.version;
+            else if (info != null && !string.IsNullOrEmpty(info.version) && !string.IsNullOrEmpty(info.patchBaseUrl)) { LatestVersion = info.version; root = info.patchBaseUrl.TrimEnd('/'); }
+            else { Current = State.Skipped; Message = ""; yield break; }   // 둘 다 못 닿음 → 연습 모드는 가능
+            if (string.IsNullOrEmpty(LatestVersion) || LatestVersion == LocalVersion)
             {
                 Current = State.UpToDate;
                 Message = "";
@@ -78,7 +87,7 @@ namespace KnifeWar.Net
             }
 
             // 매니페스트
-            string baseUrl = info.patchBaseUrl.TrimEnd('/') + "/" + UnityWebRequest.EscapeURL(LatestVersion);
+            string baseUrl = root + "/" + UnityWebRequest.EscapeURL(LatestVersion);
             Manifest manifest = null;
             using (var req = UnityWebRequest.Get(baseUrl + "/manifest.json"))
             {
@@ -130,7 +139,8 @@ namespace KnifeWar.Net
                 bool ok = false;
                 for (int attempt = 0; attempt < 3 && !ok; attempt++)
                 {
-                    using (var req = new UnityWebRequest(baseUrl + "/files/" + EscapePath(f.p), "GET"))
+                    string url = manifest.blobs ? root + "/blobs/" + f.h.ToLowerInvariant() : baseUrl + "/files/" + EscapePath(f.p);
+                    using (var req = new UnityWebRequest(url, "GET"))
                     {
                         req.downloadHandler = new DownloadHandlerFile(dest) { removeFileOnAbort = true };
                         req.timeout = 600;
@@ -178,6 +188,20 @@ namespace KnifeWar.Net
         public void SkipFailed()
         {
             if (Current == State.Failed) { Current = State.Skipped; Message = ""; }
+        }
+
+        IEnumerator FetchLatest(Action<LatestDto> done)
+        {
+            // 쿼리를 붙여 CDN 캐시를 피한다 (방금 올린 패치가 바로 보이게)
+            using (var req = UnityWebRequest.Get(PatchRoot + "/latest.json?t=" + DateTime.UtcNow.Ticks))
+            {
+                req.timeout = 8;
+                yield return req.SendWebRequest();
+                LatestDto l = null;
+                if (req.result == UnityWebRequest.Result.Success)
+                    try { l = JsonUtility.FromJson<LatestDto>(req.downloadHandler.text); } catch { }
+                done(l);
+            }
         }
 
         IEnumerator FetchVersion(string backendUrl, Action<VersionDto> done)
