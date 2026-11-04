@@ -101,6 +101,11 @@ namespace KnifeWar.Diagnostics
                         case "build_linux":
                             Build(BuildTarget.StandaloneLinux64, "Builds/LinuxServer/KnifeWarServer.x86_64", true);
                             break;
+                        case "server_bundle":   // 리눅스 서버 빌드 → 묶어서 패치 서버에 (Vultr 테스트 서버가 받음)
+                            Build(BuildTarget.StandaloneLinux64, "Builds/LinuxServer/KnifeWarServer.x86_64", true);
+                            PlayerTarget();
+                            if (!EditorApplication.ExecuteMenuItem("KnifeWar/배포/테스트 서버 묶음 올리기")) Debug.LogError("[claude-cmd] 서버 묶음 메뉴를 못 찾음");
+                            break;
                         default:
                             Debug.LogWarning($"[claude-cmd] 모르는 명령: {cmd}");
                             break;

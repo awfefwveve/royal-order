@@ -92,6 +92,66 @@ namespace KnifeWar.EditorTools
             finally { EditorUtility.ClearProgressBar(); }
         }
 
+        /// <summary>
+        /// 테스트 서버 묶음 (Vultr 시작 스크립트가 받음): 리눅스 데디 서버 + 백엔드 소스 → server/royalorder-server.tar.gz
+        /// 백엔드는 서버에서 PostgreSQL 포함으로 다시 빌드하고, 비밀값도 서버가 새로 만든다 (묶음에는 비밀값 없음).
+        /// </summary>
+        [MenuItem("KnifeWar/배포/테스트 서버 묶음 올리기")]
+        public static void UploadServerBundle()
+        {
+            string linux = Path.GetFullPath("Builds/LinuxServer");
+            if (!File.Exists(Path.Combine(linux, "KnifeWarServer.x86_64"))) { Debug.LogError("[server] 리눅스 서버 빌드가 없어요 (build_linux 먼저)"); return; }
+            string pack = Path.GetFullPath("Builds/_serverpack");
+            try
+            {
+                if (Directory.Exists(pack)) Directory.Delete(pack, true);
+                CopyDir(linux, Path.Combine(pack, "LinuxServer"), d => !d.Contains("DoNotShip"));
+                Directory.CreateDirectory(Path.Combine(pack, "backend"));
+                File.Copy("Backend/src/appsettings.json", Path.Combine(pack, "backend", "appsettings.json"));   // 저장소의 기본값 (비밀값 없음)
+                string src = Path.Combine(pack, "backend-src");
+                Directory.CreateDirectory(src);
+                foreach (var f in Directory.GetFiles("Backend/src", "*.cs")) File.Copy(f, Path.Combine(src, Path.GetFileName(f)));
+                File.Copy("Backend/src/KnifeWar.Backend.csproj", Path.Combine(src, "KnifeWar.Backend.csproj"));
+
+                string tgz = Path.GetFullPath("Builds/royalorder-server.tar.gz");
+                if (File.Exists(tgz)) File.Delete(tgz);
+                var psi = new ProcessStartInfo("tar", $"-czf \"{tgz}\" -C \"{pack}\" .") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
+                using (var p = Process.Start(psi))
+                {
+                    string err = p.StandardError.ReadToEnd();
+                    p.WaitForExit();
+                    if (p.ExitCode != 0) { Debug.LogError("[server] 묶기 실패: " + err); return; }
+                }
+                Debug.Log($"[server] 묶음 {new FileInfo(tgz).Length / (1024 * 1024)}MB");
+
+                var env = ReadSecrets();
+                env.TryGetValue("CLOUDFLARE_API_TOKEN", out var token);
+                env.TryGetValue("CLOUDFLARE_ACCOUNT_ID", out var account);
+                string bucket = env.TryGetValue("R2_BUCKET", out var b) && b.Length > 0 ? b : "royalorder-patch";
+                if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(account)) { Debug.LogError("[server] Deploy/secrets.env 에 Cloudflare 키가 없어요"); return; }
+                using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                string api = $"https://api.cloudflare.com/client/v4/accounts/{account}/r2/buckets/{bucket}";
+                Send(http, api, "server/royalorder-server.tar.gz", () =>
+                {
+                    var c = new StreamContent(File.OpenRead(tgz));
+                    c.Headers.ContentType = new MediaTypeHeaderValue("application/gzip");
+                    return c;
+                }, "no-cache, max-age=0");
+                TryPurge(http, account, new[] { "https://patch.astrelgames.com/server/royalorder-server.tar.gz" });
+                Debug.Log("[server] 올림 → https://patch.astrelgames.com/server/royalorder-server.tar.gz");
+            }
+            catch (Exception e) { Debug.LogError("[server] 실패: " + e.Message); }
+        }
+
+        static void CopyDir(string from, string to, Func<string, bool> keep)
+        {
+            Directory.CreateDirectory(to);
+            foreach (var f in Directory.GetFiles(from)) File.Copy(f, Path.Combine(to, Path.GetFileName(f)), true);
+            foreach (var d in Directory.GetDirectories(from))
+                if (keep(d)) CopyDir(d, Path.Combine(to, Path.GetFileName(d)), keep);
+        }
+
         static string MakeAndUploadInstaller(HttpClient http, string api, string ver, string gameDir)
         {
             string iscc = FindIscc();
