@@ -75,7 +75,7 @@ namespace KnifeWar.Game
             if (fightMonster) { goal = monsterPos; dist = monsterDist; }
 
             // 다리 밖으로 안 떨어지게 목표를 다리 안으로
-            goal.z = Mathf.Clamp(goal.z, -1.3f, 1.3f);
+            goal.z = Mathf.Clamp(goal.z, -(MatchController.BridgeHalfWidth - 0.7f), MatchController.BridgeHalfWidth - 0.7f);
 
             Vector3 to = goal - pos;
             to.y = 0f;
@@ -111,14 +111,15 @@ namespace KnifeWar.Game
             return i;
         }
 
-        /// <summary>다리 위(|z| &lt; 1.0)를 벗어나려는 이동을 막고 중앙 쪽으로 당긴다. 스폰 지역(|x| &gt; 60)은 넓어서 제외.</summary>
+        /// <summary>다리 가장자리 근처에서 바깥으로 가는 이동을 막고 안쪽으로 당긴다. 스폰 지역(|x| &gt; 60)은 넓어서 제외.</summary>
         static Vector3 SafeOnBridge(Vector3 pos, Vector3 move)
         {
             if (Mathf.Abs(pos.x) > 59.5f) return move;
+            float edge = MatchController.BridgeHalfWidth;
             float z = pos.z;
-            if (z > 0.9f && move.z > 0f) move.z = 0f;
-            if (z < -0.9f && move.z < 0f) move.z = 0f;
-            if (Mathf.Abs(z) > 0.6f) move.z -= Mathf.Sign(z) * Mathf.InverseLerp(0.6f, 1.4f, Mathf.Abs(z)) * 1.5f;
+            if (z > edge - 1.1f && move.z > 0f) move.z = 0f;
+            if (z < -(edge - 1.1f) && move.z < 0f) move.z = 0f;
+            if (Mathf.Abs(z) > edge - 1.4f) move.z -= Mathf.Sign(z) * Mathf.InverseLerp(edge - 1.4f, edge - 0.6f, Mathf.Abs(z)) * 1.5f;
             return Vector3.ClampMagnitude(move, 1f);
         }
 

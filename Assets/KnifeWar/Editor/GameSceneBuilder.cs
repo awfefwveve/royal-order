@@ -52,23 +52,24 @@ namespace KnifeWar.EditorTools
 
             var world = new GameObject("World").transform;
 
-            // 외나무다리: 길이 120m, 폭 4m, 윗면 y = 0
-            Box("Bridge", world, new Vector3(0f, -0.25f, 0f), new Vector3(120f, 0.5f, 4f), bridgeMat, true);
+            // 다리: 길이 120m, 폭 12m (MatchController.BridgeHalfWidth), 윗면 y = 0
+            float bw = MatchController.BridgeHalfWidth * 2f, edge = MatchController.BridgeHalfWidth + 0.05f;
+            Box("Bridge", world, new Vector3(0f, -0.25f, 0f), new Vector3(120f, 0.5f, bw), bridgeMat, true);
             // 다리 판자 줄무늬 (보기용)
             for (int i = 0; i < 40; i++)
-                Box("Plank", world, new Vector3(-58.5f + i * 3f, 0.005f, 0f), new Vector3(0.12f, 0.02f, 4f), pillarMat, false);
+                Box("Plank", world, new Vector3(-58.5f + i * 3f, 0.005f, 0f), new Vector3(0.12f, 0.02f, bw), pillarMat, false);
             // 난간 밧줄 (충돌 없음 — 떨어질 수 있다)
-            Box("RopeL", world, new Vector3(0f, 0.9f, 2.05f), new Vector3(120f, 0.05f, 0.05f), ropeMat, false);
-            Box("RopeR", world, new Vector3(0f, 0.9f, -2.05f), new Vector3(120f, 0.05f, 0.05f), ropeMat, false);
+            Box("RopeL", world, new Vector3(0f, 0.9f, edge), new Vector3(120f, 0.05f, 0.05f), ropeMat, false);
+            Box("RopeR", world, new Vector3(0f, 0.9f, -edge), new Vector3(120f, 0.05f, 0.05f), ropeMat, false);
             for (int i = 0; i <= 12; i++)
             {
                 float x = -60f + i * 10f;
-                Box("Post", world, new Vector3(x, 0.45f, 2.05f), new Vector3(0.12f, 0.9f, 0.12f), ropeMat, false);
-                Box("Post", world, new Vector3(x, 0.45f, -2.05f), new Vector3(0.12f, 0.9f, 0.12f), ropeMat, false);
+                Box("Post", world, new Vector3(x, 0.45f, edge), new Vector3(0.12f, 0.9f, 0.12f), ropeMat, false);
+                Box("Post", world, new Vector3(x, 0.45f, -edge), new Vector3(0.12f, 0.9f, 0.12f), ropeMat, false);
             }
             // 다리 기둥
             for (int i = 1; i < 6; i++)
-                Box("Pillar", world, new Vector3(-60f + i * 20f, -16f, 0f), new Vector3(2.5f, 31f, 2.5f), pillarMat, false);
+                Box("Pillar", world, new Vector3(-60f + i * 20f, -16f, 0f), new Vector3(2.5f, 31f, bw * 0.6f), pillarMat, false);
 
             // 양쪽 진영 (스폰 지역)
             Box("Spawn_Blue", world, new Vector3(-66f, -0.5f, 0f), new Vector3(12f, 1f, 12f), blueStone, true);

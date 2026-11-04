@@ -101,6 +101,9 @@ namespace KnifeWar.Diagnostics
                         case "build_linux":
                             Build(BuildTarget.StandaloneLinux64, "Builds/LinuxServer/KnifeWarServer.x86_64", true);
                             break;
+                        case "rebuild_scene":   // 게임 씬을 코드 기준(다리 폭 등)으로 다시 만들기
+                            if (!EditorApplication.ExecuteMenuItem("KnifeWar/게임 씬 만들기 (외나무다리 6:6)")) Debug.LogError("[claude-cmd] 씬 만들기 메뉴를 못 찾음");
+                            break;
                         case "server_bundle":   // 리눅스 서버 빌드 → 묶어서 패치 서버에 (Vultr 테스트 서버가 받음)
                             Build(BuildTarget.StandaloneLinux64, "Builds/LinuxServer/KnifeWarServer.x86_64", true);
                             PlayerTarget();

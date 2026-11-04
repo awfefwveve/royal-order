@@ -53,6 +53,8 @@ namespace KnifeWar.Game
         public const int PlayersPerTeam = 6;
         public const int MaxPlayers = PlayersPerTeam * 2;
         public const float LaneHalf = 60f;
+        /// <summary>다리 폭의 절반 (m). LaneConfig.HalfWidthMm 과 같은 값.</summary>
+        public const float BridgeHalfWidth = 6f;
         public const int BuffId = 1;
         public const int BuffCost = 25;
         public const int BuffSeconds = 8;

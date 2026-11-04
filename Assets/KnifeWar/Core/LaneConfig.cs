@@ -24,7 +24,7 @@ namespace KnifeWar.Core
         public static LaneConfig Default => new LaneConfig
         {
             LengthMm = 120_000,   // 120m
-            HalfWidthMm = 2_000,  // 폭 4m
+            HalfWidthMm = 6_000,  // 폭 12m (기사들이 좌우로 보법을 밟을 수 있게)
             CellSizeMm = 1_000,   // 1m 칸
         };
     }

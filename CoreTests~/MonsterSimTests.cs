@@ -36,11 +36,11 @@ public static class Program {
     int victim=-1; for (int m=0;m<sim.Capacity;m++) if (sim.Alive[m]==1&&sim.Team[m]==1&&sim.SpawnTick[m]<sim.Tick-20){victim=m;break;}
     var q = new NativeArray<MeleeQuery>(2, Allocator.Persistent); var r = new NativeArray<int>(2, Allocator.Persistent);
     q[0] = new MeleeQuery{ Origin=new float2(sim.Pos[victim]-1000, sim.Lat[victim]), Dir=new float2(1,0), RangeMm=1800, RadiusMm=250, RewindTick=sim.Tick, AttackerTeam=0 };
-    q[1] = new MeleeQuery{ Origin=new float2(sim.Pos[victim]-1000, 6000), Dir=new float2(1,0), RangeMm=1800, RadiusMm=250, RewindTick=sim.Tick, AttackerTeam=0 };
+    q[1] = new MeleeQuery{ Origin=new float2(sim.Pos[victim]-1000, sim.Lat[victim] + (sim.Lat[victim] > 0 ? -3000 : 3000)), Dir=new float2(1,0), RangeMm=1800, RadiusMm=250, RewindTick=sim.Tick, AttackerTeam=0 };
     sim.QueryMelee(q, r);
     Console.WriteLine($"melee hit={r[0]} (victim {victim}) miss-case={r[1]}");
     if (r[0] < 0) { Console.WriteLine("MELEE SHOULD HIT"); fail++; }
-    if (r[1] >= 0) { Console.WriteLine("MELEE SHOULD MISS (3m sideways)"); fail++; }
+    if (r[1] == victim) { Console.WriteLine("MELEE SHOULD MISS the victim (3m sideways)"); fail++; }   // 다리가 넓어 옆의 다른 몬스터는 맞을 수 있음
 
     // rewind: history 13 ticks ago should equal recorded pos
     int rt = sim.Tick - 13; var h = sim.History[(rt % sim.HistoryLength) * sim.Capacity + victim];
