@@ -52,3 +52,4 @@ Backend/**/obj/
 !Backend/**/*.csproj
 /[Bb]uilds/
 _staged/
+Backend/build/
