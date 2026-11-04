@@ -85,6 +85,13 @@ namespace KnifeWar.Diagnostics
                         case "build_windows":
                             Build(BuildTarget.StandaloneWindows64, "Builds/Client/KnifeWar.exe", false);
                             break;
+                        case "showcase_frontend":
+                            File.WriteAllText(Path.Combine(Path.GetDirectoryName(CmdPath), "claude_showcase_frontend.txt"), "1");
+                            Showcase();
+                            return;
+                        case "player_target":
+                            PlayerTarget();
+                            break;
                         case "release":
                             if (!EditorApplication.ExecuteMenuItem("KnifeWar/배포/(자동) 확인 없이 한 번에")) Debug.LogError("[claude-cmd] 배포 메뉴를 못 찾음");
                             break;
@@ -121,6 +128,16 @@ namespace KnifeWar.Diagnostics
                 Debug.Log($"[claude-cmd] 빌드 성공 {path} ({s.totalSize / (1024 * 1024)}MB, {s.totalTime.TotalSeconds:0}s)");
             else
                 Debug.LogError($"[claude-cmd] 빌드 실패 {path}: {s.result}, 오류 {s.totalErrors}개");
+            if (server) PlayerTarget();   // 서버 빌드 뒤 에디터가 서버 모드로 남지 않게
+        }
+
+        /// <summary>에디터 빌드 대상을 Windows 일반 게임으로 되돌림.</summary>
+        static void PlayerTarget()
+        {
+            EditorUserBuildSettings.standaloneBuildSubtarget = StandaloneBuildSubtarget.Player;
+            if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.StandaloneWindows64)
+                EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows64);
+            Debug.Log("[claude-cmd] 빌드 대상: Windows 게임");
         }
     }
 }

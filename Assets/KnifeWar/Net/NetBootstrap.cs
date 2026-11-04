@@ -129,7 +129,7 @@ namespace KnifeWar.Net
 
             string launch = ReadLaunchSpec();
             bool headless = Application.isBatchMode || SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null;
-#if UNITY_SERVER
+#if UNITY_SERVER && !UNITY_EDITOR   // 에디터는 빌드 대상이 서버여도 메뉴부터 (서버 시험은 KnifeWar 메뉴로)
             headless = true;
 #endif
             if (string.IsNullOrWhiteSpace(launch) && headless) launch = "server";

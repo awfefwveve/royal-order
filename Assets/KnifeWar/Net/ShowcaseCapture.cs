@@ -38,6 +38,27 @@ namespace KnifeWar.Net
             foreach (var f in Directory.GetFiles(_dir)) try { File.Delete(f); } catch { }
             Log("시작");
 
+            // 시작 화면 흐름 (가짜 데이터로)
+            if (File.Exists(Path.Combine(LogsDir, "claude_showcase_frontend.txt")))
+            {
+                try { File.Delete(Path.Combine(LogsDir, "claude_showcase_frontend.txt")); } catch { }
+                var seq = new (string scr, float wait)[] { ("splash", 0.6f), ("splash", 1.6f), ("title", 2.2f), ("login", 0.8f), ("lobby", 1.2f), ("play", 0.8f), ("searching", 0.6f), ("loading", 0.8f), ("result", 0.5f), ("result", 3.4f) };
+                string last = null;
+                foreach (var (scr, wait) in seq)
+                {
+                    if (scr != last) _boot.ShowcaseScreen(scr);
+                    last = scr;
+                    yield return Wait(wait);
+                    yield return Shot("fe_" + scr);
+                }
+                Log($"끝 ({_n}장)");
+                File.WriteAllText(Path.Combine(_dir, "done.txt"), _n.ToString());
+#if UNITY_EDITOR
+                UnityEditor.EditorApplication.isPlaying = false;
+#endif
+                yield break;
+            }
+
             // 연습전: 사람 칸도 봇이 조작, 나는 왕 (메뉴 화면은 카메라가 없어 촬영하지 않음)
             GameHud.ShowcaseMode = true;
             _m.HumanIsBot = true;

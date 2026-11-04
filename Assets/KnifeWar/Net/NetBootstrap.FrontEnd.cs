@@ -24,6 +24,7 @@ namespace KnifeWar.Net
         bool _devOpen;
         bool _resultLoaded;
         MatchSummaryDto _resultMatch;
+        bool _showLoading;   // 쇼케이스: 경기 로딩 화면 미리보기
 
         static readonly int[] TierFloor = { 0, 900, 1050, 1200, 1350, 1500, 1700 };
 
@@ -55,6 +56,7 @@ namespace KnifeWar.Net
                 if (!SettingsWindow.Draw(w, h)) _settingsOpen = false;
                 return;
             }
+            if (_showLoading) { DrawMatchLoading(w, h); return; }
             switch (_scr)
             {
                 case Scr.Splash: DrawSplash(w, h); break;
@@ -588,6 +590,45 @@ namespace KnifeWar.Net
             }
 
             if (t > 1.2f && FE.Button(new Rect((w - 300) * 0.5f, h - BottomH - 50, 300, 52), L.T("fe_continue"), FE.Kind.Primary, 20)) Go(Scr.Play);
+        }
+
+        /// <summary>쇼케이스 촬영용: 가짜 계정·파티·결과로 화면을 차례로 띄운다.</summary>
+        internal void ShowcaseScreen(string name)
+        {
+            _profile = new ProfileDto { id = "me", name = "Bojung", displayId = "Bojung#1024", tier = 2, mmr = 1188, wins = 14, losses = 9, matches = 23, emailVerified = true };
+            _party = new PartyDto
+            {
+                inParty = true, code = "K7Q2RM", isLeader = true,
+                members = new[]
+                {
+                    new PartyMemberDto { id = "me", name = "Bojung#1024", leader = true, me = true },
+                    new PartyMemberDto { id = "a", name = "Iko#2201" },
+                    new PartyMemberDto { id = "b", name = "Jaeseung#0420" },
+                },
+            };
+            _startupDone = true;
+            Session.SplashShown = true;
+            switch (name)
+            {
+                case "splash": Session.SplashShown = false; _scr = Scr.Splash; _scrAt = FE.Now; break;
+                case "title": _startupDone = false; _scr = Scr.Title; _scrAt = FE.Now; break;
+                case "login": _profile = null; _party = null; _scr = Scr.Login; _scrAt = FE.Now; break;
+                case "lobby": _scr = Scr.Lobby; _scrAt = FE.Now; break;
+                case "play": _searching = false; _scr = Scr.Play; _scrAt = FE.Now; break;
+                case "searching": _searching = true; _searchStartedAt = FE.Now - 23f; _scr = Scr.Play; break;
+                case "loading": _searching = false; _scr = Scr.Play; _showLoading = true; break;
+                case "result":
+                    _searching = false; _showLoading = false;
+                    _profile.mmr = 1212; _profile.tier = 3;
+                    Session.PrevMmr = 1188; Session.PrevTier = 2;
+                    var pl = new System.Collections.Generic.List<MatchPlayerDto>();
+                    string[] names = { "Bojung#1024", "Iko#2201", "Jaeseung#0420", "Knight#3310", "Knight#7781", "Knight#5120", "Red#1001", "Red#1002", "Red#1003", "Red#1004", "Red#1005", "Red#1006" };
+                    for (int i = 0; i < 12; i++) pl.Add(new MatchPlayerDto { name = names[i], team = i < 6 ? 0 : 1, kills = (13 - i) % 9, deaths = (i * 5) % 7, me = i == 0 });
+                    _resultMatch = new MatchSummaryDto { winnerTeam = 0, myTeam = 0, mmrChange = 24, players = pl.ToArray() };
+                    _resultLoaded = true;
+                    _scr = Scr.Result; _scrAt = FE.Now;
+                    break;
+            }
         }
 
         static int TierOf(int mmr, int fallbackPlacement)
