@@ -126,13 +126,23 @@ namespace KnifeWar.EditorTools
 
         static string FindIscc()
         {
-            string[] c =
+            var roots = new[]
             {
-                @"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-                @"C:\Program Files\Inno Setup 6\ISCC.exe",
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Programs\Inno Setup 6\ISCC.exe"),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
+                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+                @"C:\",
             };
-            foreach (var p in c) if (File.Exists(p)) return p;
+            foreach (var r in roots)
+            {
+                if (string.IsNullOrEmpty(r) || !Directory.Exists(r)) continue;
+                foreach (var d in Directory.GetDirectories(r, "Inno Setup*"))
+                {
+                    string p = Path.Combine(d, "ISCC.exe");
+                    if (File.Exists(p)) return p;
+                }
+            }
             return null;
         }
 

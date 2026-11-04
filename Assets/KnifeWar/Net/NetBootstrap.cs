@@ -244,6 +244,7 @@ namespace KnifeWar.Net
 
         string ReadLaunchSpec()
         {
+            if (AppInstance.FromWeb) return null;   // 홈페이지에서 실행: 실행 옵션 무시, 메뉴부터
             var args = Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
                 if (args[i] == "-kw") return args[i + 1];

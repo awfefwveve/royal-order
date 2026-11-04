@@ -28,6 +28,13 @@ SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayIcon={app}\{#MyExe}
+; 원클릭에 가깝게: 설치 위치·준비 화면 생략
+DisableDirPage=yes
+DisableReadyPage=yes
+DisableWelcomePage=yes
+; 게임이 켜져 있으면 끄라고 안내 (게임이 같은 이름의 뮤텍스를 잡고 있음)
+AppMutex=ROYALORDER_RUNNING
+CloseApplications=yes
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
@@ -43,6 +50,13 @@ Source: "..\..\Builds\Release\{#MyVersion}\game\*"; DestDir: "{app}"; Flags: ign
 [Icons]
 Name: "{group}\{#MyName}"; Filename: "{app}\{#MyExe}"
 Name: "{userdesktop}\{#MyName}"; Filename: "{app}\{#MyExe}"; Tasks: desktopicon
+
+[Registry]
+; 홈페이지 PLAY NOW → royalorder:// 주소로 게임 실행 (게임도 켜질 때 자기 위치로 다시 등록함)
+Root: HKCU; Subkey: "Software\Classes\royalorder"; ValueType: string; ValueName: ""; ValueData: "URL:ROYAL ORDER"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\royalorder"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\royalorder\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyExe}"",0"
+Root: HKCU; Subkey: "Software\Classes\royalorder\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyExe}"" ""%1"""
 
 [Run]
 Filename: "{app}\{#MyExe}"; Description: "{cm:LaunchProgram,{#MyName}}"; Flags: nowait postinstall skipifsilent
