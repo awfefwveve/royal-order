@@ -16,7 +16,7 @@ namespace KnifeWar.EditorTools
     ///   royalorder/{버전}/manifest.json    파일 목록
     ///   royalorder/RoyalOrderSetup.exe     설치 파일 (Inno Setup이 있으면) / 없으면 RoyalOrder.zip
     ///   royalorder/latest.json             최신 버전 — 맨 마지막에 올려서, 다 올라간 뒤에만 플레이어가 받게 함
-    /// 키는 Deploy/secrets.env (커밋 안 됨): CLOUDFLARE_API_TOKEN (R2 쓰기 권한), CLOUDFLARE_ACCOUNT_ID, R2_BUCKET(기본 patch)
+    /// 키는 Deploy/secrets.env (커밋 안 됨): CLOUDFLARE_API_TOKEN (R2 쓰기 권한), CLOUDFLARE_ACCOUNT_ID, R2_BUCKET(기본 royalorder-patch)
     /// </summary>
     public static class PatchUploader
     {
@@ -33,7 +33,7 @@ namespace KnifeWar.EditorTools
             var env = ReadSecrets();
             env.TryGetValue("CLOUDFLARE_API_TOKEN", out var token);
             env.TryGetValue("CLOUDFLARE_ACCOUNT_ID", out var account);
-            string bucket = env.TryGetValue("R2_BUCKET", out var b) && b.Length > 0 ? b : "patch";
+            string bucket = env.TryGetValue("R2_BUCKET", out var b) && b.Length > 0 ? b : "royalorder-patch";
             if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(account))
             {
                 Debug.LogError("[deploy] Deploy/secrets.env 에 CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID 가 필요해요.");

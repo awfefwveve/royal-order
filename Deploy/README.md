@@ -53,7 +53,7 @@
 
 ## 5. 테스트 서버 띄우기 (Vultr)
 
-1. 서버 묶음 올리기: `Builds/royalorder-server.tar.gz` → R2 `patch` 버킷 `server/` 폴더.
+1. 서버 묶음 올리기: `Builds/royalorder-server.tar.gz` → R2 `royalorder-patch` 버킷 `server/` 폴더.
 2. Vultr에서 서버 만들기: 서울, Ubuntu 24.04, 시작 스크립트 `royalorder` 선택 (`Deploy/vultr/startup.sh`).
 3. Cloudflare DNS: `api` A 레코드 → 서버 IP, **프록시 끔(회색 구름)**. 몇 분 뒤 HTTPS 인증서가 자동으로 붙는다.
 4. 확인: `https://api.astrelgames.com/ping` 이 열리면 준비 끝. 설치 기록은 서버의 `/var/log/royalorder-setup.log`.
