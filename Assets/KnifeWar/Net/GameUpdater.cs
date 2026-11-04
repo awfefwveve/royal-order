@@ -62,9 +62,11 @@ namespace KnifeWar.Net
         public IEnumerator Run(string backendUrl)
         {
             LocalVersion = ReadLocalVersion();
-            if (Application.isEditor || Application.platform != RuntimePlatform.WindowsPlayer)
+            // 에디터·다른 OS·ASTREL 런처로 켠 경우(런처가 이미 버전을 맞춤): 업데이트 안 함 (공지만 받아옴)
+            bool fromLauncher = Array.IndexOf(Environment.GetCommandLineArgs(), "-launcher") >= 0;
+            if (Application.isEditor || Application.platform != RuntimePlatform.WindowsPlayer || fromLauncher)
             {
-                Current = State.Skipped;   // 에디터·다른 OS: 업데이트 안 함 (공지만 받아옴)
+                Current = State.Skipped;
                 yield return FetchVersion(backendUrl, v => { });
                 yield break;
             }
