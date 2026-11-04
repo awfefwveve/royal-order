@@ -101,10 +101,13 @@ for i in $(seq 0 $((GAME_SERVERS-1))); do systemctl enable --now royalorder-game
 
 # HTTPS: Caddy gets a Let's Encrypt certificate by itself once DNS points here (retries until then).
 # Backend listens on 127.0.0.1 only, so passwords never travel unencrypted.
+# Host header is rewritten because the backend (HttpListener) only answers to 127.0.0.1:8080.
 cat > /etc/caddy/Caddyfile <<CADDY
 $API_DOMAIN {
 	encode gzip
-	reverse_proxy 127.0.0.1:8080
+	reverse_proxy 127.0.0.1:8080 {
+		header_up Host {upstream_hostport}
+	}
 }
 CADDY
 systemctl enable caddy
