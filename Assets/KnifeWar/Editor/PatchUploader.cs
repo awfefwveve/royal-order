@@ -75,7 +75,8 @@ namespace KnifeWar.EditorTools
 
                 // 4) 최신 버전 (마지막)
                 string latest = $"{{\"version\":\"{ver}\",\"installer\":\"{installerUrl}\",\"date\":\"{DateTime.UtcNow:yyyy-MM-dd}\"}}";
-                PutBytes(http, api, $"{Prefix}/latest.json", Encoding.UTF8.GetBytes(latest), "application/json");
+                PutBytes(http, api, $"{Prefix}/latest.json", Encoding.UTF8.GetBytes(latest), "application/json", "no-cache, max-age=0");
+                TryPurge(http, account, new[] { $"{PublicRoot}/latest.json", $"{PublicRoot}/RoyalOrderSetup.exe", $"{PublicRoot}/RoyalOrder.zip" });
 
                 // 5) 홈페이지에서 latest.json 을 읽을 수 있게 (한 번 해 두면 됨, 실패해도 배포는 끝난 것)
                 TrySetCors(http, api);
@@ -156,22 +157,43 @@ namespace KnifeWar.EditorTools
             });
         }
 
-        static void PutBytes(HttpClient http, string api, string key, byte[] data, string type)
+        static void PutBytes(HttpClient http, string api, string key, byte[] data, string type, string cacheControl = null)
         {
             Send(http, api, key, () =>
             {
                 var c = new ByteArrayContent(data);
                 c.Headers.ContentType = new MediaTypeHeaderValue(type);
                 return c;
-            });
+            }, cacheControl);
         }
 
-        static void Send(HttpClient http, string api, string key, Func<HttpContent> make)
+        /// <summary>CDN에 남은 옛 사본 지우기 (토큰에 Zone 읽기 + 캐시 지우기 권한이 있을 때만, 없으면 조용히 넘어감).</summary>
+        static void TryPurge(HttpClient http, string account, string[] urls)
+        {
+            try
+            {
+                var z = http.GetAsync("https://api.cloudflare.com/client/v4/zones?name=astrelgames.com").Result;
+                string body = z.Content.ReadAsStringAsync().Result;
+                int i = body.IndexOf("\"id\":\"", StringComparison.Ordinal);
+                if (!z.IsSuccessStatusCode || i < 0) { Debug.Log("[deploy] CDN 캐시 지우기 건너뜀 (토큰에 Zone 권한 없음) — latest.json 은 캐시 금지로 올렸음"); return; }
+                string zone = body.Substring(i + 6, 32);
+                var sb = new StringBuilder("{\"files\":[");
+                for (int k = 0; k < urls.Length; k++) sb.Append(k > 0 ? "," : "").Append('"').Append(urls[k]).Append('"');
+                sb.Append("]}");
+                var res = http.PostAsync($"https://api.cloudflare.com/client/v4/zones/{zone}/purge_cache", new StringContent(sb.ToString(), Encoding.UTF8, "application/json")).Result;
+                Debug.Log(res.IsSuccessStatusCode ? "[deploy] CDN 캐시 지움" : $"[deploy] CDN 캐시 지우기 실패 {(int)res.StatusCode}");
+            }
+            catch (Exception e) { Debug.LogWarning("[deploy] CDN 캐시 지우기 실패: " + e.Message); }
+        }
+
+        static void Send(HttpClient http, string api, string key, Func<HttpContent> make, string cacheControl = null)
         {
             for (int attempt = 1; ; attempt++)
             {
                 using var content = make();   // 다시 보낼 때마다 새로 (스트림은 한 번만 읽힘)
-                var res = http.PutAsync($"{api}/objects/{Uri.EscapeDataString(key).Replace("%2F", "/")}", content).Result;
+                using var req = new HttpRequestMessage(HttpMethod.Put, $"{api}/objects/{Uri.EscapeDataString(key).Replace("%2F", "/")}") { Content = content };
+                if (cacheControl != null) req.Headers.TryAddWithoutValidation("Cache-Control", cacheControl);
+                var res = http.SendAsync(req).Result;
                 if (res.IsSuccessStatusCode) return;
                 string body = res.Content.ReadAsStringAsync().Result;
                 if (attempt >= 3 || (int)res.StatusCode == 401 || (int)res.StatusCode == 403)
