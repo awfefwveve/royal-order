@@ -39,7 +39,10 @@ public sealed class AccountExtra
     public string BanReason { get; set; } = "";
     public List<string> RecentMatches { get; set; } = new();
     public string TermsVersion { get; set; } = "";    // 마지막으로 동의한 약관 버전
-    public long TermsAgreedAt { get; set; }   // 최근 경기 id (최신이 앞, 최대 20)
+    public long TermsAgreedAt { get; set; }
+    public List<string> Friends { get; set; } = new();          // 친구 계정 id (서로 들어 있음)
+    public List<string> FriendRequestsIn { get; set; } = new(); // 받은 친구 요청
+    public List<string> FriendRequestsOut { get; set; } = new();// 보낸 친구 요청
 }
 
 /// <summary>플레이어 신고.</summary>
@@ -74,6 +77,7 @@ public sealed class MatchRecord
     public long EndedAt { get; set; }
     public int WinnerTeam { get; set; } = -1;   // -1 무승부, -2 무효(서버 장애·전원 이탈)
     public List<MatchPlayer> Players { get; set; } = new();
+    public bool Custom { get; set; }            // 사용자 설정 대전: MMR·전적에 반영 안 함
     public const int Abandoned = -2;
 }
 
@@ -101,6 +105,7 @@ public interface IStore
     MatchRecord GetMatch(string id);
     IReadOnlyList<Account> TopAccounts(string region, int count);
     bool NameTagTaken(string name, string tag);
+    Account FindByNameTag(string name, string tag);
     void SaveReport(Report r);
     IReadOnlyList<Report> Reports(bool onlyOpen, int count);
     bool HasReport(string reporterId, string targetId, string matchId);
@@ -215,6 +220,11 @@ public sealed class FileStore : IStore, IDisposable
     public bool NameTagTaken(string name, string tag)
     {
         lock (_lock) return _accounts.Values.Any(a => a.Extra.Tag == tag && string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public Account FindByNameTag(string name, string tag)
+    {
+        lock (_lock) return _accounts.Values.FirstOrDefault(a => string.Equals(a.Extra.Tag, tag, StringComparison.OrdinalIgnoreCase) && string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
     public void SaveReport(Report r)

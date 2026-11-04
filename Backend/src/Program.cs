@@ -49,10 +49,12 @@ var servers = new ServerRegistry();
 var steam = new SteamAuth(opt.Steam, new HttpClient { Timeout = TimeSpan.FromSeconds(10) });
 var mm = new Matchmaker(opt, store, servers, tokens, Log);
 var parties = new PartyService(mm);
+var rooms = new RoomService(mm);
 var serverSecret = Encoding.UTF8.GetBytes(opt.ServerSecret);
 var mailer = new Mailer(opt.Smtp, Log);
 var astrel = new FirebaseAuth(opt.Astrel.FirebaseProjectId, new HttpClient { Timeout = TimeSpan.FromSeconds(10) });
 var codes = new OneTimeCodes();
+var presence = new Presence();
 var accountLock = new object();   // 가입·이름 변경 (이메일·이름#태그 중복 방지)
 
 var http = new HttpServer(cfg.Prefixes(), Log);
@@ -67,6 +69,7 @@ Account Me(Req r)
     var c = tokens.ValidateSession(h[7..]);
     var a = c != null ? store.GetAccount(c.Sub) : null;
     if (a == null || c.Ver != a.Extra.TokenVersion || a.IsBanned(TokenService.Now())) return null;
+    presence.Touch(a.Id);
     return a;
 }
 
@@ -104,7 +107,7 @@ object Profile(Account a)
 }
 
 bool TermsOk(Account a) =>
-    a.Provider != "email" || string.IsNullOrEmpty(opt.Client.TermsVersion) || a.Extra.TermsVersion == opt.Client.TermsVersion;
+    a.Provider is not ("email" or "astrel") || string.IsNullOrEmpty(opt.Client.TermsVersion) || a.Extra.TermsVersion == opt.Client.TermsVersion;
 
 void AgreeTerms(Account a)
 {
@@ -648,6 +651,7 @@ http.Map("POST", "/party/create", r =>
 {
     var a = Me(r);
     if (a == null) return Status(401);
+    rooms.Leave(a.Id);
     return Ok(PartyView(parties.Create(a), a));
 });
 
@@ -657,6 +661,7 @@ http.Map("POST", "/party/join", r =>
     if (a == null) return Status(401);
     var req = r.Json<PartyJoin>();
     var (p, error) = parties.Join(a, req?.Code);
+    if (p != null) rooms.Leave(a.Id);
     return p == null ? Status(error == "not_found" ? 404 : 409, new { error }) : Ok(PartyView(p, a));
 });
 
@@ -682,6 +687,215 @@ http.Map("POST", "/party/pings", r =>
     if (a == null) return Status(401);
     parties.SetPings(a.Id, r.Json<JoinQueue>()?.Pings);
     return Ok();
+});
+
+// ---------------------------------------------------------------- 친구
+
+string FriendState(string id)
+{
+    if (!presence.Online(id)) return "offline";
+    var t = mm.Status(id);
+    if (t != null && t.State == Matchmaker.TicketState.Matched) return "in_match";
+    if (t != null && t.State == Matchmaker.TicketState.Searching) return "searching";
+    return "online";
+}
+
+object Brief(string id)
+{
+    var f = store.GetAccount(id);
+    return f == null ? null : new { id = f.Id, displayId = f.DisplayId, state = FriendState(f.Id) };
+}
+
+http.Map("GET", "/friends", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    return Ok(new
+    {
+        friends = a.Extra.Friends.Select(Brief).Where(x => x != null),
+        incoming = a.Extra.FriendRequestsIn.Select(Brief).Where(x => x != null),
+        outgoing = a.Extra.FriendRequestsOut.Select(Brief).Where(x => x != null),
+        invites = presence.Invites(a.Id).Select(i => new { i.Id, from = i.FromName, i.Kind, i.Code }),
+    });
+});
+
+// 이름#태그로 친구 요청. 상대가 이미 나에게 요청했으면 바로 친구.
+http.Map("POST", "/friends/request", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    var req = r.Json<FriendAdd>();
+    string did = (req?.DisplayId ?? "").Trim();
+    int hash = did.LastIndexOf('#');
+    if (hash <= 0 || hash == did.Length - 1 || did.Length > 40) return Status(400, new { error = "format" });
+    var b = store.FindByNameTag(did[..hash].Trim(), did[(hash + 1)..].Trim());
+    if (b == null || b.Id == a.Id) return Status(404, new { error = "not_found" });
+    lock (accountLock)
+    {
+        a = store.GetAccount(a.Id); b = store.GetAccount(b.Id);
+        if (a.Extra.Friends.Contains(b.Id)) return Ok(new { state = "friends" });
+        if (a.Extra.Friends.Count >= 200) return Status(409, new { error = "limit" });
+        if (a.Extra.FriendRequestsIn.Contains(b.Id))
+        {
+            a.Extra.FriendRequestsIn.Remove(b.Id); b.Extra.FriendRequestsOut.Remove(a.Id);
+            a.Extra.Friends.Add(b.Id); b.Extra.Friends.Add(a.Id);
+            store.SaveAccount(a); store.SaveAccount(b);
+            return Ok(new { state = "friends" });
+        }
+        if (b.Extra.FriendRequestsIn.Count >= 100) return Status(409, new { error = "limit" });
+        if (!b.Extra.FriendRequestsIn.Contains(a.Id)) b.Extra.FriendRequestsIn.Add(a.Id);
+        if (!a.Extra.FriendRequestsOut.Contains(b.Id)) a.Extra.FriendRequestsOut.Add(b.Id);
+        store.SaveAccount(a); store.SaveAccount(b);
+    }
+    return Ok(new { state = "requested" });
+});
+
+// 수락 / 거절·취소 / 친구 삭제 — 모두 상대 id 하나로
+http.Map("POST", "/friends/accept", r =>
+{
+    var a = Me(r);
+    var id = r.Json<FriendRef>()?.Id;
+    if (a == null) return Status(401);
+    lock (accountLock)
+    {
+        a = store.GetAccount(a.Id);
+        var b = id == null ? null : store.GetAccount(id);
+        if (b == null || !a.Extra.FriendRequestsIn.Contains(b.Id)) return Status(404);
+        a.Extra.FriendRequestsIn.Remove(b.Id); b.Extra.FriendRequestsOut.Remove(a.Id);
+        if (!a.Extra.Friends.Contains(b.Id)) a.Extra.Friends.Add(b.Id);
+        if (!b.Extra.Friends.Contains(a.Id)) b.Extra.Friends.Add(a.Id);
+        store.SaveAccount(a); store.SaveAccount(b);
+    }
+    return Ok();
+});
+
+http.Map("POST", "/friends/remove", r =>
+{
+    var a = Me(r);
+    var id = r.Json<FriendRef>()?.Id;
+    if (a == null) return Status(401);
+    lock (accountLock)
+    {
+        a = store.GetAccount(a.Id);
+        var b = id == null ? null : store.GetAccount(id);
+        if (b == null) return Status(404);
+        foreach (var (x, y) in new[] { (a, b), (b, a) })
+        {
+            x.Extra.Friends.Remove(y.Id); x.Extra.FriendRequestsIn.Remove(y.Id); x.Extra.FriendRequestsOut.Remove(y.Id);
+        }
+        store.SaveAccount(a); store.SaveAccount(b);
+    }
+    return Ok();
+});
+
+// 친구를 내 파티나 방으로 초대 (2분). 받는 쪽은 /friends 의 invites 로 받고, 코드로 들어온다.
+http.Map("POST", "/friends/invite", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    var req = r.Json<FriendInvite>();
+    if (req == null || !a.Extra.Friends.Contains(req.Id ?? "")) return Status(403, new { error = "not_friend" });
+    string code;
+    if (req.Kind == "room") code = rooms.Get(a.Id)?.Code;
+    else if (req.Kind == "party") code = (parties.Get(a.Id) ?? parties.Create(a)).Code;
+    else return Status(400);
+    if (code == null) return Status(409, new { error = "no_room" });
+    presence.AddInvite(req.Id, new Presence.Invite
+    {
+        Id = Guid.NewGuid().ToString("N")[..10], FromId = a.Id, FromName = a.DisplayId, Kind = req.Kind, Code = code,
+        Expires = TokenService.Now() + 120,
+    });
+    return Ok(new { code });
+});
+
+http.Map("POST", "/friends/invite/dismiss", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    presence.RemoveInvite(a.Id, r.Json<FriendRef>()?.Id ?? "");
+    return Ok();
+});
+
+// ---------------------------------------------------------------- 사용자 설정 대전 (사설방)
+
+object RoomView(RoomService.Room room, Account me)
+{
+    var t = mm.Status(me.Id);
+    var match = room.MatchId != null && t != null && t.State == Matchmaker.TicketState.Matched && t.MatchId == room.MatchId;
+    return new
+    {
+        inRoom = true,
+        room.Code,
+        isHost = room.HostId == me.Id,
+        started = match,
+        seats = room.Seats.Select((s, i) => s == null
+            ? new { slot = i, id = "", name = "", host = false, me = false }
+            : new { slot = i, id = s.AccountId, name = s.Name, host = s.AccountId == room.HostId, me = s.AccountId == me.Id }),
+    };
+}
+
+http.Map("GET", "/room", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    var room = rooms.Get(a.Id);
+    return room == null ? Ok(new { inRoom = false }) : Ok(RoomView(room, a));
+});
+
+http.Map("POST", "/room/create", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    if (opt.Client.Maintenance) return Status(503, new { error = "maintenance", notice = opt.Client.Notice });
+    if (!TermsOk(a)) return Status(403, new { error = "terms" });
+    parties.Leave(a.Id);
+    mm.Leave(a.Id);
+    return Ok(RoomView(rooms.Create(a, r.Json<JoinQueue>()?.Pings), a));
+});
+
+http.Map("POST", "/room/join", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    if (!TermsOk(a)) return Status(403, new { error = "terms" });
+    var req = r.Json<RoomJoin>();
+    var (room, error) = rooms.Join(a, req?.Code, req?.Pings);
+    if (room == null) return Status(error == "not_found" ? 404 : 409, new { error });
+    parties.Leave(a.Id);
+    mm.Leave(a.Id);
+    return Ok(RoomView(room, a));
+});
+
+http.Map("POST", "/room/move", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    var req = r.Json<RoomMove>();
+    return req != null && rooms.Move(a.Id, req.Slot) ? Ok(RoomView(rooms.Get(a.Id), a)) : Status(409);
+});
+
+http.Map("POST", "/room/kick", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    return rooms.Kick(a.Id, r.Json<FriendRef>()?.Id ?? "") ? Ok() : Status(403);
+});
+
+http.Map("POST", "/room/leave", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    rooms.Leave(a.Id);
+    return Ok(new { inRoom = false });
+});
+
+http.Map("POST", "/room/start", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    if (opt.Client.Maintenance) return Status(503, new { error = "maintenance", notice = opt.Client.Notice });
+    string error = rooms.Start(a.Id, store.GetAccount);
+    return error == null ? Ok(RoomView(rooms.Get(a.Id), a)) : Status(error == "host_only" ? 403 : 409, new { error });
 });
 
 // ---------------------------------------------------------------- 리더보드
@@ -741,6 +955,26 @@ http.Map("POST", "/server/result", r =>
     {
         var pr = req.Players?.FirstOrDefault(x => x.AccountId == p.AccountId);
         if (pr != null) { p.Kills = pr.Kills; p.Deaths = pr.Deaths; }
+    }
+
+    if (m.Custom)
+    {
+        // 사용자 설정 대전: MMR·전적 반영 없음 (최근 경기 목록에만)
+        foreach (var p in m.Players)
+        {
+            p.MmrAfter = p.MmrBefore;
+            var acc = store.GetAccount(p.AccountId);
+            if (acc == null) continue;
+            acc.Extra.RecentMatches.Remove(m.Id);
+            acc.Extra.RecentMatches.Insert(0, m.Id);
+            if (acc.Extra.RecentMatches.Count > 20) acc.Extra.RecentMatches.RemoveRange(20, acc.Extra.RecentMatches.Count - 20);
+            store.SaveAccount(acc);
+        }
+        store.SaveMatch(m);
+        servers.MatchEnded(m.ServerId);
+        mm.EndMatch(m.Id);
+        Log($"custom match {m.Id} ended winner={m.WinnerTeam}");
+        return Ok(new { players = m.Players.Select(p => new { p.AccountId, p.MmrBefore, p.MmrAfter }) });
     }
 
     // MMR: 팀 평균 Elo (첫 10판은 변동 크게)
@@ -844,6 +1078,11 @@ public sealed record IdReq(string Id);
 public sealed record ClientAdminReq(string Version, string Notice, bool? Maintenance);
 public sealed record SteamLogin(string Ticket, string Name);
 public sealed record AstrelLogin(string IdToken);
+public sealed record FriendAdd(string DisplayId);
+public sealed record FriendRef(string Id);
+public sealed record FriendInvite(string Id, string Kind);
+public sealed record RoomJoin(string Code, Dictionary<string, int> Pings);
+public sealed record RoomMove(int Slot);
 public sealed record JoinQueue(Dictionary<string, int> Pings);
 public sealed record PartyJoin(string Code);
 public sealed record PartyKick(string AccountId);

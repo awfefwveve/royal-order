@@ -42,7 +42,7 @@ namespace KnifeWar.Net
             if (File.Exists(Path.Combine(LogsDir, "claude_showcase_frontend.txt")))
             {
                 try { File.Delete(Path.Combine(LogsDir, "claude_showcase_frontend.txt")); } catch { }
-                var seq = new (string scr, float wait)[] { ("splash", 0.6f), ("splash", 1.6f), ("title", 2.2f), ("login", 0.8f), ("lobby", 1.2f), ("play", 0.8f), ("searching", 0.6f), ("loading", 0.8f), ("result", 0.5f), ("result", 3.4f) };
+                var seq = new (string scr, float wait)[] { ("splash", 0.6f), ("splash", 1.6f), ("title", 2.2f), ("login", 0.8f), ("lobby", 1.2f), ("play", 0.8f), ("custom", 0.8f), ("friends", 0.8f), ("searching", 0.6f), ("loading", 0.8f), ("result", 0.5f), ("result", 3.4f) };
                 string last = null;
                 foreach (var (scr, wait) in seq)
                 {

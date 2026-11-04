@@ -305,8 +305,10 @@ namespace KnifeWar.Net
         void Logout()
         {
             if (_party != null) LeaveParty();
+            if (InRoom) StartCoroutine(_api.Post("/room/leave", "{}", null));
             ForgetSession();
             _side = SidePanel.None;
+            _room = null; _friends = null; _friendsOpen = false;
         }
 
         // ------------------------------------------------------------------
@@ -316,6 +318,7 @@ namespace KnifeWar.Net
         void OpenSide(SidePanel p)
         {
             _side = _side == p ? SidePanel.None : p;
+            _friendsOpen = false;
             _sideMsg = "";
             _reportTarget = null;
             if (_api == null || string.IsNullOrEmpty(_api.Token)) return;

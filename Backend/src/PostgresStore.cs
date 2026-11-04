@@ -112,6 +112,18 @@ public sealed class PostgresStore : IStore, IDisposable
         return cmd.ExecuteScalar() != null;
     }
 
+    public Account FindByNameTag(string name, string tag)
+    {
+        string id;
+        using (var cmd = _db.CreateCommand("select id from accounts where lower(name) = lower($1) and upper(extra ->> 'Tag') = upper($2) limit 1"))
+        {
+            cmd.Parameters.AddWithValue(name);
+            cmd.Parameters.AddWithValue(tag);
+            id = cmd.ExecuteScalar() as string;
+        }
+        return id == null ? null : GetAccount(id);
+    }
+
     public void SaveReport(Report rp)
     {
         using var cmd = _db.CreateCommand(@"

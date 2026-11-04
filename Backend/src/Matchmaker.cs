@@ -302,6 +302,72 @@ public sealed class Matchmaker
         }
     }
 
+    /// <summary>이 경기가 아직 진행 중인지 (배정됨 ~ 결과/무효 전).</summary>
+    public bool MatchRunning(string matchId)
+    {
+        lock (_lock) return _tickets.Values.Any(t => t.State == TicketState.Matched && t.MatchId == matchId);
+    }
+
+    /// <summary>
+    /// 사용자 설정 대전: 정해진 칸 그대로 경기 생성 (빈 칸은 서버에서 봇). MMR 반영 없음.
+    /// 실패하면 null + error (busy = 누가 다른 경기 중, no_server = 빈 게임 서버 없음).
+    /// </summary>
+    public string CreateCustomMatch(List<(Account account, int slot, Dictionary<string, int> pings)> players, out string error)
+    {
+        error = null;
+        lock (_lock)
+        {
+            foreach (var (a, _, _) in players)
+                if (_byAccount.TryGetValue(a.Id, out var tid) && _tickets.TryGetValue(tid, out var t0) && t0.State == TicketState.Matched)
+                { error = "busy"; return null; }
+
+            // 리전: 모두가 잰 리전 중 가장 나쁜 핑이 제일 낮은 곳 (못 쟀으면 빈 서버가 있는 첫 리전)
+            var pings = Combine(players.Select(p => p.pings));
+            var order = pings.OrderBy(kv => kv.Value).Select(kv => kv.Key).ToList();
+            foreach (var r in _opt.Regions) if (!order.Contains(r.Id)) order.Add(r.Id);
+            string region = order.FirstOrDefault(r => _servers.FreeServers(r) > 0);
+            if (region == null) { error = "no_server"; return null; }
+
+            string matchId = Guid.NewGuid().ToString("N")[..12];
+            var assignment = new ServerRegistry.Assignment { MatchId = matchId, Region = region };
+            var record = new MatchRecord { Id = matchId, Region = region, CreatedAt = TokenService.Now(), Custom = true };
+            foreach (var (a, slot, _) in players)
+            {
+                int team = slot < TeamSize ? 0 : 1;
+                assignment.Players.Add(new ServerRegistry.AssignedPlayer { AccountId = a.Id, Name = a.Name, Slot = slot, Team = team });
+                record.Players.Add(new MatchPlayer { AccountId = a.Id, Name = a.Name, Slot = slot, Team = team, MmrBefore = MmrOf(a.Id, region) });
+            }
+            var server = _servers.Allocate(assignment);
+            if (server == null) { error = "no_server"; return null; }
+            record.ServerId = server.Id;
+            _store.SaveMatch(record);
+
+            // 사람마다 "배정됨" 티켓 → 클라는 평소처럼 /mm/join·/mm/status 로 접속 정보를 받는다
+            long now = TokenService.Now();
+            foreach (var (a, slot, _) in players)
+            {
+                LeaveLocked(a.Id);
+                int team = slot < TeamSize ? 0 : 1;
+                var t = new Ticket
+                {
+                    Id = Guid.NewGuid().ToString("N")[..16], AccountId = a.Id,
+                    Members = new() { new Member { AccountId = a.Id, Name = a.Name } },
+                    CreatedAt = now, MatchedAt = now, State = TicketState.Matched, Status = "matched",
+                };
+                t.Results[a.Id] = new MatchResult
+                {
+                    MatchId = matchId, Region = region, Address = server.Address, Port = server.Port,
+                    JoinToken = _tokens.IssueJoin(matchId, a.Id, a.Name, slot, TimeSpan.FromMinutes(120)),
+                    Slot = slot, Team = team,
+                };
+                _tickets[t.Id] = t;
+                _byAccount[a.Id] = t.Id;
+            }
+            _log($"custom match {matchId} region={region} humans={players.Count} server={server.Id}");
+            return matchId;
+        }
+    }
+
     /// <summary>묶음을 두 팀으로 (파티는 쪼개지 않음). 못 나누면 null.</summary>
     List<Ticket>[] AssignTeams(List<Ticket> group, string region)
     {

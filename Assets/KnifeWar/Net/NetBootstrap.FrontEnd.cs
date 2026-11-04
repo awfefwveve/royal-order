@@ -50,6 +50,8 @@ namespace KnifeWar.Net
 
         void DrawFrontEnd(float w, float h)
         {
+            // 경기(연습전 포함)에서 돌아오면 커서가 잠긴 채 남아 있음 → 메뉴에서는 항상 보이게
+            if (Cursor.lockState != CursorLockMode.None || !Cursor.visible) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
             if (_settingsOpen)
             {
                 FE.Cover(new Rect(0, 0, w, h), FE.KeyArt, FE.KeyArtAspect, 1f, 1f, new Color(0.35f, 0.35f, 0.4f));
@@ -265,6 +267,12 @@ namespace KnifeWar.Net
             x += 136;
             if (FE.Button(new Rect(x, y + 10, 130, 36), L.T("settings"), FE.Kind.Ghost, 15)) _settingsOpen = true;
             x += 136;
+            if (LoggedIn)
+            {
+                string fl = FriendRequests > 0 ? L.T("fr_title") + $" ({FriendRequests})" : L.T("fr_title");
+                if (FE.Button(new Rect(x, y + 10, 130, 36), fl, FriendRequests > 0 ? FE.Kind.Line : FE.Kind.Ghost, 15)) { _friendsOpen = !_friendsOpen; _side = SidePanel.None; }
+                x += 136;
+            }
             if (_profile != null && !_profile.emailVerified && FE.Button(new Rect(x, y + 10, 150, 36), L.T("fe_verify"), FE.Kind.Ghost, 15)) OpenSide(SidePanel.Verify);
             if (FE.Button(new Rect(w - 300, y + 10, 130, 36), L.T("acc_logout"), FE.Kind.Ghost, 14)) { Logout(); Go(Scr.Login); }
             string v = GameUpdater.ReadLocalVersion();
@@ -321,6 +329,9 @@ namespace KnifeWar.Net
                 FE.Text(new Rect(x, y + 20, 420, 26), L.T("fe_in_party", _party.members?.Length ?? 1), 16, FE.Gold);
 
             DrawSidePanelRight(w, h);
+            EnsureSocialLoop();
+            DrawFriendsPanel(w, h);
+            DrawInviteBanner(w);
             DrawBottomBar(w, h, false);
         }
 
@@ -354,17 +365,34 @@ namespace KnifeWar.Net
 
             // 모드 탭
             float tabY = TopH + 18, tabW = 180;
-            string[] tabs = { L.T("fe_ranked"), L.T("fe_practice_bots") };
+            string[] tabs = { L.T("fe_ranked"), L.T("fe_custom"), L.T("fe_practice_bots") };
             float tx = (w - tabs.Length * tabW) * 0.5f;
             for (int i = 0; i < tabs.Length; i++)
             {
                 var r = new Rect(tx + i * tabW, tabY, tabW, 36);
-                bool sel = i == 0;
+                bool sel = i == _playTab;
                 FE.Text(r, tabs[i], 17, sel ? FE.Gold : (FE.Hover(r) ? Color.white : FE.Sub), TextAnchor.MiddleCenter, sel);
                 if (sel) FE.Fill(new Rect(r.x + 30, r.yMax - 3, r.width - 60, 3), FE.Gold);
-                if (i == 1 && FE.Clicked(r)) StartOffline();
+                if (FE.Clicked(r) && !_searching) { if (i == 2) StartOffline(); else { _playTab = i; _roomPollAt = 0f; } }
             }
             FE.Fill(new Rect(w * 0.15f, tabY + 40, w * 0.7f, 1), FE.Line);
+            EnsureSocialLoop();
+
+            if (_playTab == 1)
+            {
+                DrawCustom(w, h, tabY + 52);
+                float cby = h - BottomH - 86;
+                var cmain = new Rect((w - 360f) * 0.5f, cby, 360f, 60f);
+                DrawCustomButtons(cmain, cby);
+                GUI.enabled = !_searching;
+                if (FE.Button(new Rect(cmain.x - 216, cby + 10, 200, 40), L.T("fe_practice"), FE.Kind.Line, 16)) StartOffline();
+                GUI.enabled = true;
+                DrawSidePanelRight(w, h);
+                DrawFriendsPanel(w, h);
+                DrawInviteBanner(w);
+                DrawBottomBar(w, h, true);
+                return;
+            }
 
             // 파티 코드 줄
             float cy = tabY + 58;
@@ -439,6 +467,8 @@ namespace KnifeWar.Net
             GUI.enabled = true;
 
             DrawSidePanelRight(w, h);
+            DrawFriendsPanel(w, h);
+            DrawInviteBanner(w);
             DrawBottomBar(w, h, true);
         }
 
@@ -614,7 +644,25 @@ namespace KnifeWar.Net
                 case "title": _startupDone = false; _scr = Scr.Title; _scrAt = FE.Now; break;
                 case "login": _profile = null; _party = null; _scr = Scr.Login; _scrAt = FE.Now; break;
                 case "lobby": _scr = Scr.Lobby; _scrAt = FE.Now; break;
-                case "play": _searching = false; _scr = Scr.Play; _scrAt = FE.Now; break;
+                case "play": _searching = false; _playTab = 0; _friendsOpen = false; _scr = Scr.Play; _scrAt = FE.Now; break;
+                case "custom":
+                case "friends":
+                    _searching = false; _scr = Scr.Play; _scrAt = FE.Now; _playTab = 1; _party = null;
+                    _api = new BackendClient("http://127.0.0.1:1") { Token = "showcase" };
+                    _room = new RoomDto { inRoom = true, code = "R4D8XK", isHost = true, seats = new SeatDto[12] };
+                    for (int i = 0; i < 12; i++) _room.seats[i] = new SeatDto { slot = i, id = "", name = "" };
+                    _room.seats[0] = new SeatDto { slot = 0, id = "me", name = "Bojung#1024", host = true, me = true };
+                    _room.seats[1] = new SeatDto { slot = 1, id = "a", name = "Iko#2201" };
+                    _room.seats[6] = new SeatDto { slot = 6, id = "b", name = "Jaeseung#0420" };
+                    _friends = new FriendsDto
+                    {
+                        friends = new[] { new FriendDto { id = "a", displayId = "Iko#2201", state = "online" }, new FriendDto { id = "b", displayId = "Jaeseung#0420", state = "in_match" }, new FriendDto { id = "c", displayId = "Knight#3310", state = "offline" } },
+                        incoming = new[] { new FriendDto { id = "d", displayId = "Rookie#5120", state = "online" } },
+                        outgoing = new FriendDto[0],
+                        invites = name == "friends" ? new[] { new InviteDto { id = "i", from = "Iko#2201", kind = "party", code = "K7Q2RM" } } : new InviteDto[0],
+                    };
+                    _friendsOpen = name == "friends";
+                    break;
                 case "searching": _searching = true; _searchStartedAt = FE.Now - 23f; _scr = Scr.Play; break;
                 case "loading": _searching = false; _scr = Scr.Play; _showLoading = true; break;
                 case "result":
