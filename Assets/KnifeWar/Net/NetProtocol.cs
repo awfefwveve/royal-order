@@ -31,7 +31,7 @@ namespace KnifeWar.Net
 
     public static class NetProtocol
     {
-        public const ushort Version = 4;
+        public const ushort Version = 5;   // 5: 몬스터 상태에 좌우 위치 추가
         public const ushort DefaultPort = 7777;
         public const int MaxCommandsPerPacket = 4;
         public const int CorrectionsPerSnapshot = 16;
@@ -158,7 +158,7 @@ namespace KnifeWar.Net
                     w.UShort((ushort)e.A); w.Byte((byte)e.B); w.Byte((byte)e.C); w.Int(e.D); w.Short((short)e.E); w.Byte((byte)e.F);
                     break;
                 case GameEventType.MonsterState:
-                    w.UShort((ushort)e.A); w.Byte((byte)e.B); w.Int(e.D);
+                    w.UShort((ushort)e.A); w.Byte((byte)e.B); w.Int(e.D); w.Short((short)e.E);
                     break;
                 case GameEventType.MonsterDeath:
                     w.UShort((ushort)e.A);
@@ -196,7 +196,7 @@ namespace KnifeWar.Net
                     e.A = r.UShort(); e.B = r.Byte(); e.C = r.Byte(); e.D = r.Int(); e.E = r.Short(); e.F = r.Byte();
                     break;
                 case GameEventType.MonsterState:
-                    e.A = r.UShort(); e.B = r.Byte(); e.D = r.Int();
+                    e.A = r.UShort(); e.B = r.Byte(); e.D = r.Int(); e.E = r.Short();
                     break;
                 case GameEventType.MonsterDeath:
                     e.A = r.UShort();

@@ -69,6 +69,7 @@ namespace KnifeWar.Core
         public NativeArray<int> PlayerLat;
         public NativeArray<byte> PlayerTeam;
         public NativeArray<byte> PlayerAlive;
+        public NativeArray<byte> PlayerKing;     // 왕이면 1 → 몬스터는 기본적으로 적 왕을 향해 간다
         public NativeArray<int> PlayerDamage;   // 이번 틱에 몬스터에게 받은 데미지 (PrepareTick에서 0으로)
         public NativeArray<int> TargetPlayer;   // 몬스터별 공격 중인 플레이어, 없으면 -1
         public int PlayerCount;
@@ -117,6 +118,7 @@ namespace KnifeWar.Core
             PlayerLat = new NativeArray<int>(MaxSimPlayers, p);
             PlayerTeam = new NativeArray<byte>(MaxSimPlayers, p);
             PlayerAlive = new NativeArray<byte>(MaxSimPlayers, p);
+            PlayerKing = new NativeArray<byte>(MaxSimPlayers, p);
             PlayerDamage = new NativeArray<int>(MaxSimPlayers, p);
             TargetPlayer = new NativeArray<int>(capacity, p);
 
@@ -140,9 +142,10 @@ namespace KnifeWar.Core
         }
 
         /// <summary>플레이어 위치 갱신 (매 틱 Step 전에). 레인 좌표 mm.</summary>
-        public void SetPlayer(int index, int posMm, int latMm, byte team, bool alive)
+        public void SetPlayer(int index, int posMm, int latMm, byte team, bool alive, bool king = false)
         {
             Complete();
+            PlayerKing[index] = (byte)(king ? 1 : 0);
             PlayerPos[index] = posMm;
             PlayerLat[index] = latMm;
             PlayerTeam[index] = team;
@@ -216,12 +219,13 @@ namespace KnifeWar.Core
             _aliveTeam[team]++;
         }
 
-        public void PuppetSetState(int slot, byte state, int pos)
+        public void PuppetSetState(int slot, byte state, int pos, int lat = int.MinValue)
         {
             Complete();
             if (slot < 0 || slot >= Capacity || Alive[slot] == 0) return;
             State[slot] = state;
             Pos[slot] = pos;
+            if (lat != int.MinValue) Lat[slot] = (short)math.clamp(lat, -Lane.HalfWidthMm, Lane.HalfWidthMm);
         }
 
         public void PuppetCorrect(int slot, int pos, byte state)
@@ -247,10 +251,46 @@ namespace KnifeWar.Core
             for (int m = 0; m < Capacity; m++)
             {
                 if (Alive[m] == 0 || State[m] != (byte)MonsterState.Move) continue;
-                int dir = Team[m] == 0 ? 1 : -1;
-                Pos[m] = math.clamp(Pos[m] + dir * Defs[Type[m]].SpeedMmPerTick, 0, Lane.LengthMm);
+                Goal(Team[m], Lane, PlayerCount, PlayerPos, PlayerLat, PlayerTeam, PlayerAlive, PlayerKing, out int goal, out int goalLat, out bool king);
+                int pos = Pos[m], lat = Lat[m];
+                Advance(ref pos, ref lat, goal, goalLat, king, Defs[Type[m]].SpeedMmPerTick, Lane);
+                Pos[m] = pos;
+                Lat[m] = (short)lat;
             }
         }
+
+        /// <summary>
+        /// 몬스터의 목적지: 살아 있는 적 왕이 있으면 그 위치, 없으면 적 진영 끝.
+        /// (가는 길에 적 몬스터·플레이어가 사거리에 들어오면 멈춰서 먼저 처리 — AcquireTargetJob)
+        /// </summary>
+        public static void Goal(int team, LaneConfig lane, int playerCount, NativeArray<int> pPos, NativeArray<int> pLat,
+            NativeArray<byte> pTeam, NativeArray<byte> pAlive, NativeArray<byte> pKing, out int goal, out int goalLat, out bool king)
+        {
+            int enemy = 1 - team;
+            for (int p = 0; p < playerCount; p++)
+                if (pKing[p] != 0 && pAlive[p] != 0 && pTeam[p] == enemy)
+                {
+                    goal = math.clamp(pPos[p], 0, lane.LengthMm);
+                    goalLat = math.clamp(pLat[p], -lane.HalfWidthMm, lane.HalfWidthMm);
+                    king = true;
+                    return;
+                }
+            goal = team == 0 ? lane.LengthMm : 0;
+            goalLat = 0;
+            king = false;
+        }
+
+        /// <summary>한 틱 이동: 목적지 쪽으로 (넘어가지 않게), 왕이 가까우면 좌우도 왕 쪽으로 붙는다.</summary>
+        public static void Advance(ref int pos, ref int lat, int goal, int goalLat, bool king, int speed, LaneConfig lane)
+        {
+            int d = goal - pos;
+            pos = math.clamp(pos + math.clamp(d, -speed, speed), 0, lane.LengthMm);
+            if (king && math.abs(d) < 12_000)
+                lat = math.clamp(lat + math.clamp(goalLat - lat, -speed / 2, speed / 2), -lane.HalfWidthMm, lane.HalfWidthMm);
+        }
+
+        /// <summary>앞쪽 방향 (+1 / -1): 목적지 쪽. 같은 위치면 원래 진행 방향.</summary>
+        public static int Heading(int team, int pos, int goal) => goal > pos ? 1 : goal < pos ? -1 : (team == 0 ? 1 : -1);
 
         /// <summary>외부 데미지 (기사 칼 등). 다음 Step에서 체력 0 이하면 제거된다.</summary>
         public void ApplyDamage(int slot, int damage)
@@ -304,6 +344,7 @@ namespace KnifeWar.Core
                 PlayerLat = PlayerLat,
                 PlayerTeam = PlayerTeam,
                 PlayerAlive = PlayerAlive,
+                PlayerKing = PlayerKing,
                 TargetPlayer = TargetPlayer,
             }.Schedule(Capacity, 256, grid);
 
@@ -317,9 +358,14 @@ namespace KnifeWar.Core
                 Target = Target,
                 TargetPlayer = TargetPlayer,
                 Pos = Pos,
+                Lat = Lat,
                 Cooldown = Cooldown,
-                Hp = Hp,
-                Leak = Leak,
+                PlayerCount = PlayerCount,
+                PlayerPos = PlayerPos,
+                PlayerLat = PlayerLat,
+                PlayerTeam = PlayerTeam,
+                PlayerAlive = PlayerAlive,
+                PlayerKing = PlayerKing,
             }.Schedule(Capacity, 256, acquire);
 
             var damage = new DamageJob
@@ -418,6 +464,7 @@ namespace KnifeWar.Core
             if (PlayerLat.IsCreated) PlayerLat.Dispose();
             if (PlayerTeam.IsCreated) PlayerTeam.Dispose();
             if (PlayerAlive.IsCreated) PlayerAlive.Dispose();
+            if (PlayerKing.IsCreated) PlayerKing.Dispose();
             if (PlayerDamage.IsCreated) PlayerDamage.Dispose();
             if (TargetPlayer.IsCreated) TargetPlayer.Dispose();
             if (CellStart.IsCreated) CellStart.Dispose();
@@ -513,6 +560,7 @@ namespace KnifeWar.Core
         [ReadOnly] public NativeArray<int> PlayerLat;
         [ReadOnly] public NativeArray<byte> PlayerTeam;
         [ReadOnly] public NativeArray<byte> PlayerAlive;
+        [ReadOnly] public NativeArray<byte> PlayerKing;
         public NativeArray<int> TargetPlayer;
 
         public void Execute(int m)
@@ -527,8 +575,9 @@ namespace KnifeWar.Core
 
             int team = Team[m];
             int enemy = 1 - team;
-            int dir = team == 0 ? 1 : -1;
             var def = Defs[Type[m]];
+            MonsterSim.Goal(team, Lane, PlayerCount, PlayerPos, PlayerLat, PlayerTeam, PlayerAlive, PlayerKing, out int goal, out _, out _);
+            int dir = MonsterSim.Heading(team, Pos[m], goal);
 
             int myPos = Pos[m];
             int myLat = Lat[m];
@@ -608,9 +657,14 @@ namespace KnifeWar.Core
         [ReadOnly] public NativeArray<int> Target;
         [ReadOnly] public NativeArray<int> TargetPlayer;
         public NativeArray<int> Pos;
+        public NativeArray<short> Lat;
         public NativeArray<int> Cooldown;
-        public NativeArray<int> Hp;
-        public NativeArray<byte> Leak;
+        public int PlayerCount;
+        [ReadOnly] public NativeArray<int> PlayerPos;
+        [ReadOnly] public NativeArray<int> PlayerLat;
+        [ReadOnly] public NativeArray<byte> PlayerTeam;
+        [ReadOnly] public NativeArray<byte> PlayerAlive;
+        [ReadOnly] public NativeArray<byte> PlayerKing;
 
         public void Execute(int m)
         {
@@ -622,19 +676,13 @@ namespace KnifeWar.Core
                 return;
             }
 
+            // 막는 게 없으면 적 왕에게 (왕이 없으면 적 진영 끝까지 가서 거기서 버팀 — 사라지지 않음)
             Cooldown[m] = 0;
-            int dir = Team[m] == 0 ? 1 : -1;
-            int p = Pos[m] + dir * Defs[Type[m]].SpeedMmPerTick;
-
-            bool reached = (dir > 0 && p >= Lane.LengthMm) || (dir < 0 && p <= 0);
-            if (reached)
-            {
-                p = math.clamp(p, 0, Lane.LengthMm);
-                Leak[m] = 1;
-                Hp[m] = 0;
-            }
-
-            Pos[m] = p;
+            MonsterSim.Goal(Team[m], Lane, PlayerCount, PlayerPos, PlayerLat, PlayerTeam, PlayerAlive, PlayerKing, out int goal, out int goalLat, out bool king);
+            int pos = Pos[m], lat = Lat[m];
+            MonsterSim.Advance(ref pos, ref lat, goal, goalLat, king, Defs[Type[m]].SpeedMmPerTick, Lane);
+            Pos[m] = pos;
+            Lat[m] = (short)lat;
         }
     }
 

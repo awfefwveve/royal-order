@@ -42,7 +42,8 @@ namespace KnifeWar.Core
     /// 발로란트식 라운드 진행 (서버 전용, 넷코드 독립).
     /// - 준비 단계에서 각자 기사/왕 선택, 왕은 팀당 1명. 안 고르면 이전 라운드 직업 유지.
     /// - 라운드 중 부활 없음.
-    /// - 승리(임시): 상대 기사 + 왕 전멸. 시간 초과 시 생존자 많은 팀, 같으면 무승부(점수 없음).
+    /// - 승리: 상대 왕이 죽으면 즉시 라운드 승리. 왕이 없는 팀은 전멸로 판정.
+    ///   시간 초과 시 생존자 많은 팀, 같으면 무승부(점수 없음).
     /// </summary>
     public sealed class RoundRules
     {
@@ -62,6 +63,7 @@ namespace KnifeWar.Core
         public readonly bool[] Alive;
         public readonly PlayerClass[] Class;
         readonly PlayerClass?[] _pick;
+        readonly bool[] _kingAtStart;
 
         public event Action<RoundPhase> PhaseChanged;
 
@@ -75,6 +77,7 @@ namespace KnifeWar.Core
             Alive = new bool[MaxPlayers];
             Class = new PlayerClass[MaxPlayers];
             _pick = new PlayerClass?[MaxPlayers];
+            _kingAtStart = new bool[MaxPlayers];
             for (int i = 0; i < MaxPlayers; i++) Team[i] = (byte)(i < config.PlayersPerTeam ? 0 : 1);
         }
 
@@ -118,6 +121,9 @@ namespace KnifeWar.Core
 
                 case RoundPhase.Live:
                 {
+                    // 왕이 죽으면 그 팀은 바로 라운드 패배 (둘 다 같은 틱이면 무승부)
+                    bool k0 = KingDown(0), k1 = KingDown(1);
+                    if (k0 || k1) { EndRound(tick, k0 && k1 ? -1 : (k0 ? 1 : 0)); break; }
                     int a0 = AliveCount(0), a1 = AliveCount(1);
                     if (a0 == 0 || a1 == 0) EndRound(tick, a0 == 0 && a1 == 0 ? -1 : (a0 == 0 ? 1 : 0));
                     else if (tick >= PhaseEndTick) EndRound(tick, a0 == a1 ? -1 : (a0 > a1 ? 0 : 1));
@@ -128,6 +134,14 @@ namespace KnifeWar.Core
                     if (tick >= PhaseEndTick) StartSelect(tick);
                     break;
             }
+        }
+
+        /// <summary>이번 라운드를 왕으로 시작한 사람이 죽었는지 (왕이 없던 팀은 false → 전멸 규칙).</summary>
+        public bool KingDown(int team)
+        {
+            for (int i = 0; i < MaxPlayers; i++)
+                if (Team[i] == team && _kingAtStart[i] && !Alive[i]) return true;
+            return false;
         }
 
         public int AliveCount(int team)
@@ -156,6 +170,7 @@ namespace KnifeWar.Core
             {
                 if (_pick[i].HasValue) Class[i] = _pick[i].Value;
                 Alive[i] = Connected[i];
+                _kingAtStart[i] = Alive[i] && Class[i] == PlayerClass.King;
             }
             SetPhase(RoundPhase.Live, tick + Config.RoundSeconds * TickRate);
         }

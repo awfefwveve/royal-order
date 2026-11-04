@@ -549,7 +549,7 @@ namespace KnifeWar.Game
                 var a = Avatars[p];
                 Vector3 pos = a.transform.position;
                 bool target = phase == RoundPhase.Live && a.Alive && pos.y > -1f;
-                Monsters.SetPlayer(p, LaneX(pos.x), (int)(pos.z * 1000f), a.Team, target);
+                Monsters.SetPlayer(p, LaneX(pos.x), (int)(pos.z * 1000f), a.Team, target, Round.Class[p] == PlayerClass.King);
             }
 
             Monsters.Step();
@@ -715,7 +715,7 @@ namespace KnifeWar.Game
                 }
                 else if (alive != 0 && state != _prevState[m])
                 {
-                    Emit(new GameEvent { Type = GameEventType.MonsterState, A = m, B = state, D = s.Pos[m] });
+                    Emit(new GameEvent { Type = GameEventType.MonsterState, A = m, B = state, D = s.Pos[m], E = s.Lat[m] });
                 }
                 _prevAlive[m] = alive;
                 _prevState[m] = state;
@@ -802,7 +802,7 @@ namespace KnifeWar.Game
                     if (Role == NetRole.Client) Monsters.PuppetSpawn(e.A, (byte)e.B, (byte)e.C, e.D, (short)e.E, (byte)e.F);
                     break;
                 case GameEventType.MonsterState:
-                    if (Role == NetRole.Client) Monsters.PuppetSetState(e.A, (byte)e.B, e.D);
+                    if (Role == NetRole.Client) Monsters.PuppetSetState(e.A, (byte)e.B, e.D, e.E);
                     break;
                 case GameEventType.MonsterDeath:
                     if (Role == NetRole.Client) Monsters.PuppetRemove(e.A);
@@ -816,6 +816,13 @@ namespace KnifeWar.Game
 
         void ClientTickStep()
         {
+            // 서버와 같은 규칙(적 왕 쪽으로)으로 몬스터를 미리 움직여 둔다 (상태가 바뀌면 서버 값으로 맞춤)
+            for (int p = 0; p < MaxPlayers; p++)
+            {
+                var a = Avatars[p];
+                Vector3 pos = a.transform.position;
+                Monsters.SetPlayer(p, LaneX(pos.x), (int)(pos.z * 1000f), a.Team, Round.Phase == RoundPhase.Live && a.Alive && pos.y > -1f, Round.Class[p] == PlayerClass.King);
+            }
             Monsters.PuppetStep();
             if (!_clockSynced || HumanIndex < 0) return;
 

@@ -116,6 +116,45 @@ public static class Program2 {
       Check(r.Score[0] == 2, "시간 초과 → 생존자 많은 팀 득점 (나간 유저는 사망 처리)");
     }
 
+    Console.WriteLine("[왕 사망 = 라운드 패배]");
+    {
+      var r = new RoundRules(RoundConfig.Default, TR);
+      for (int i = 0; i < 12; i++) r.SetConnected(i, true);
+      int t = 0; r.Tick(t++); r.PickClass(5, PlayerClass.King); r.PickClass(11, PlayerClass.King);
+      while (r.Phase == RoundPhase.Select) r.Tick(t++);
+      r.Kill(11); r.Tick(t++);
+      Check(r.Phase == RoundPhase.RoundEnd && r.Score[0] == 1 && r.AliveCount(1) == 5, "상대 왕만 죽어도 즉시 라운드 승리 (기사 5명 생존)");
+      while (r.Phase != RoundPhase.Live) r.Tick(t++);
+      r.Kill(0); r.Kill(1); r.Tick(t++);
+      Check(r.Phase == RoundPhase.Live, "기사가 죽는 건 라운드 계속");
+    }
+
+    Console.WriteLine("[몬스터는 적 왕에게]");
+    {
+      var lane = LaneConfig.Default;
+      var sim = new MonsterSim(64, TR, lane);
+      sim.PrepareTick();
+      sim.TrySpawn(0, 0);
+      int kingPos = lane.LengthMm - 20_000, kingLat = lane.HalfWidthMm;   // 적 왕: 끝에서 20m 앞, 다리 가장자리
+      for (int i = 0; i < TR * 60; i++)
+      {
+        sim.PrepareTick();
+        sim.SetPlayer(0, kingPos, kingLat, 1, true, king: true);
+        sim.Step();
+      }
+      int m = -1; for (int i = 0; i < 64; i++) if (sim.Alive[i] != 0) m = i;
+      Check(m >= 0 && Math.Abs(sim.Pos[m] - kingPos) < 2_000 && Math.Abs(sim.Lat[m] - kingLat) < 1_000, $"왕 앞까지 가서 좌우도 붙음 (pos {(m >= 0 ? sim.Pos[m] : -1)}, lat {(m >= 0 ? sim.Lat[m] : -1)})");
+      Check(sim.PlayerDamage[0] > 0 || sim.TargetPlayer[m] == 0, "왕을 공격");
+      sim.Dispose();
+
+      var sim2 = new MonsterSim(64, TR, lane);
+      sim2.PrepareTick(); sim2.TrySpawn(0, 0);
+      for (int i = 0; i < TR * 80; i++) { sim2.PrepareTick(); sim2.Step(); }
+      int m2 = -1; for (int i = 0; i < 64; i++) if (sim2.Alive[i] != 0) m2 = i;
+      Check(m2 >= 0 && sim2.Pos[m2] == lane.LengthMm, "왕이 없으면 적 진영 끝까지 가서 버팀 (사라지지 않음)");
+      sim2.Dispose();
+    }
+
     Console.WriteLine("[왕]");
     {
       var r = new RoundRules(RoundConfig.Default, TR);
