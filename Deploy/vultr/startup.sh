@@ -5,10 +5,13 @@
 # (ASCII only: Vultr startup scripts accept Latin1 characters only)
 set -e
 BUNDLE_URL="https://patch.astrelgames.com/server/royalorder-server.tar.gz"
-GAME_SERVERS=2            # matches running at once (12 players each)
+GAME_SERVERS=1            # matches running at once (12 players each); small test server = 1
 TICK=64
 API_DOMAIN="api.astrelgames.com"   # point this DNS A record (DNS only, grey cloud) at the server IP; HTTPS cert is automatic
 exec > /var/log/royalorder-setup.log 2>&1
+
+# 2 GB swap so a small (2 GB RAM) server can build the backend and run the game server safely
+if [ ! -f /swapfile ]; then fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi
 
 export DEBIAN_FRONTEND=noninteractive HOME=/root DOTNET_CLI_HOME=/root DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
 apt-get update
