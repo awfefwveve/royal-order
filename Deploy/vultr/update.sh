@@ -7,6 +7,8 @@ BASE="https://patch.astrelgames.com/server"
 DIR=/opt/royalorder
 LOCK=/run/royalorder-update.lock
 exec 9>$LOCK; flock -n 9 || exit 0
+# Keep this script itself up to date (next run uses the new copy)
+curl -fsS "$BASE/update.sh?t=$(date +%s)" -o /usr/local/bin/royalorder-update.new && [ -s /usr/local/bin/royalorder-update.new ] && chmod +x /usr/local/bin/royalorder-update.new && mv /usr/local/bin/royalorder-update.new /usr/local/bin/royalorder-update || true
 NEW=$(curl -fsS "$BASE/version.txt?t=$(date +%s)" | tr -d '\r\n ') || exit 0
 [ -n "$NEW" ] || exit 0
 OLD=$(cat $DIR/version 2>/dev/null || echo none)

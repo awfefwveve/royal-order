@@ -234,6 +234,9 @@ http.Map("GET", "/regions", _ => Ok(opt.Regions.Select(r => new
 http.Map("POST", "/auth/dev", r =>
 {
     if (!opt.DevAuth) return Status(403);
+    // 개발용 로그인은 같은 컴퓨터에서만 (인터넷 → Caddy 를 거친 요청은 X-Forwarded-For 가 붙음)
+    var ep = r.Raw.RemoteEndPoint;
+    if (ep == null || !System.Net.IPAddress.IsLoopback(ep.Address) || !string.IsNullOrEmpty(r.Header("X-Forwarded-For"))) return Status(403);
     var req = r.Json<DevLogin>();
     if (req == null || string.IsNullOrWhiteSpace(req.DeviceId) || req.DeviceId.Length < 8) return Status(400, new { error = "deviceId" });
     return Ok(Login(Upsert("dev", req.DeviceId, req.Name)));
