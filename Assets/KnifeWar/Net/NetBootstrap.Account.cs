@@ -94,6 +94,7 @@ namespace KnifeWar.Net
                 if (_updater.Current == GameUpdater.State.Failed) yield break;   // 화면에서 다시 시도/계속 선택
             }
             yield return AutoLogin();
+            _startupDone = true;
         }
 
         /// <summary>업데이트 중이면 화면 전체를 쓰고 true.</summary>
@@ -163,11 +164,6 @@ namespace KnifeWar.Net
             _backendUrl = backend;
 
             yield return ResumeParty();
-            if (Session.ShowRecentAfterMatch)
-            {
-                Session.ShowRecentAfterMatch = false;
-                OpenSide(SidePanel.Matches);
-            }
         }
 
         void SaveSession(string token)

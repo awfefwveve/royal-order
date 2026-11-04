@@ -65,6 +65,10 @@ namespace KnifeWar.Net
             public static bool UpdateChecked;
             public static string Notice = "";
             public static bool Maintenance;
+            public static bool SplashShown;               // 로고 화면은 게임을 켤 때 한 번만
+            public static string AfterTitle;              // 타이틀 다음에 갈 화면 (경기 뒤: 결과 / 나가기: 플레이)
+            public static int PrevMmr = int.MinValue, PrevTier = -9;   // 경기 전 MMR·티어 (결과 화면 승급/강등)
+            public static int LastOutcome = -1;           // 1 승 0 패 -1 무 (계정 없이 한 경기 결과용)
 
             public static void Clear()
             {
@@ -120,6 +124,7 @@ namespace KnifeWar.Net
                 _searchText = Session.MenuMessage;
                 Session.MenuMessage = null;
             }
+            PickFirstScreen();
             StartCoroutine(MenuStartup());
 
             string launch = ReadLaunchSpec();
@@ -170,6 +175,7 @@ namespace KnifeWar.Net
             {
                 case ClientEnd.Left:
                     Session.Clear();
+                    Session.AfterTitle = "Play";
                     BackToMenu(null);
                     return;
 
@@ -179,6 +185,7 @@ namespace KnifeWar.Net
                     var me = _m.Human;
                     int winner = _m.Round.MatchWinner;
                     string result = winner < 0 || me == null ? L.T("result_draw") : (winner == me.Team ? L.T("result_win") : L.T("result_lose"));
+                    Session.LastOutcome = winner < 0 || me == null ? -1 : (winner == me.Team ? 1 : 0);
                     Session.ShowRecentAfterMatch = true;
                     BackToMenu(L.T("st_match_over", result));
                     return;
@@ -452,6 +459,7 @@ namespace KnifeWar.Net
             _searching = false;
             if (match == null) yield break;
 
+            if (_profile != null) { Session.PrevMmr = _profile.mmr; Session.PrevTier = _profile.tier; }
             Debug.Log($"[KnifeWar] 매칭 완료 match={match.matchId} region={match.region} server={match.address}:{match.port} slot={match.slot}");
             StartClient(match.address, (ushort)match.port, lag, bot, match.joinToken);
         }
@@ -564,39 +572,12 @@ namespace KnifeWar.Net
                 string s = NetInfo.Status;
                 if (NetInfo.PingMs >= 0f) s += "  ·  " + L.T("st_ping", NetInfo.PingMs.ToString("0"));
                 if (_m.Role != NetRole.None) s += $"  ·  {MatchController.TickRate} tick";
+                if (_m.Role == NetRole.None) { DrawMatchLoading(w, h); return; }   // 매칭 → 서버 접속 중: 로딩 화면
                 if (!string.IsNullOrEmpty(s)) GUI.Label(new Rect(10, h - 28, 900, 24), s, _label);
-                if (_m.Role == NetRole.None) Dim(w, h, NetInfo.Status);
                 return;
             }
 
-            Dim(w, h, null);
-            if (DrawUpdater(w, h)) return;
-            if (_settingsOpen)
-            {
-                if (!KnifeWar.Game.SettingsWindow.Draw(w, h)) _settingsOpen = false;
-                return;
-            }
-            if (GUI.Button(new Rect(10, 10, 120, 30), L.T("settings"))) _settingsOpen = true;
-            for (int i = 0; i < L.LangNames.Length; i++)
-            {
-                bool cur = (int)L.Current == i;
-                if (GUI.Toggle(new Rect(w - 4 * 92 - 10 + i * 92, 10, 88, 30), cur, L.LangNames[i], GUI.skin.button) && !cur) L.Set((Lang)i);
-            }
-            float pw = 480, x = w * 0.5f - pw * 0.5f, y = h * 0.08f;
-            GUI.Label(new Rect(0, y, w, 60), L.T("title"), _title);
-            y += 80;
-            DrawParty(x + pw + 30, y, Mathf.Min(320f, w - (x + pw + 40)));
-
-            if (_searching || !string.IsNullOrEmpty(_searchText))
-            {
-                GUI.Label(new Rect(x, y, pw, 90), _searchText, _label);
-                y += 96;
-                if (_searching && GUI.Button(new Rect(x, y, pw, 48), L.T("cancel"), _button)) CancelSearch();
-                else if (!_searching && GUI.Button(new Rect(x, y, pw, 48), L.T("ok"), _button)) _searchText = "";
-                return;
-            }
-
-            DrawMainMenu(w, h, x, y, pw);
+            DrawFrontEnd(w, h);
         }
 
         void DrawParty(float px, float py, float pw)

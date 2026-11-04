@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -117,7 +116,10 @@ namespace KnifeWar.EditorTools
 
             string zip = Path.GetFullPath($"Builds/Release/{ver}/RoyalOrder-{ver}.zip");
             if (File.Exists(zip)) File.Delete(zip);
-            ZipFile.CreateFromDirectory(gameDir, zip, System.IO.Compression.CompressionLevel.Optimal, false);
+            // 압축은 윈도우 기본 PowerShell로 (에디터 어셈블리 참조 문제 없이)
+            var z = new ProcessStartInfo("powershell", $"-NoProfile -Command \"Compress-Archive -Path '{gameDir}\\*' -DestinationPath '{zip}' -Force\"")
+            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
+            using (var p = Process.Start(z)) { string err = p.StandardError.ReadToEnd(); p.WaitForExit(); if (!File.Exists(zip)) throw new Exception("zip 만들기 실패: " + err); }
             Put(http, api, $"{Prefix}/RoyalOrder.zip", zip, "application/zip");
             return $"{PublicRoot}/RoyalOrder.zip";
         }
