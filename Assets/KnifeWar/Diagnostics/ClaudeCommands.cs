@@ -130,6 +130,8 @@ namespace KnifeWar.Diagnostics
                 options = BuildOptions.None,
             };
             if (server) options.subtarget = (int)StandaloneBuildSubtarget.Server;
+            PlayerSettings.SplashScreen.show = false;   // 유니티 로고 화면 끄기
+            PlayerSettings.SplashScreen.showUnityLogo = false;
             var report = BuildPipeline.BuildPlayer(options);
             var s = report.summary;
             if (s.result == BuildResult.Succeeded)

@@ -57,6 +57,9 @@ namespace KnifeWar.EditorTools
 
             string gameDir = Path.GetFullPath($"Builds/Release/{ver}/game");
             if (Directory.Exists(gameDir)) Directory.Delete(gameDir, true);
+            // 유니티 로고 화면 없이 바로 ASTREL 로고부터 (Unity 6는 무료 버전도 끌 수 있음)
+            PlayerSettings.SplashScreen.show = false;
+            PlayerSettings.SplashScreen.showUnityLogo = false;
             var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
                 scenes = new[] { ScenePath },
