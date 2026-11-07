@@ -13,8 +13,8 @@ namespace KnifeWar.Game
         public float Yaw;           // 도 (Unity Y 회전)
         public float Pitch;         // 도 (+ = 아래, Unity 카메라 기준)
         public KnifeAttack Attack;  // 이번에 누른 공격
-        public sbyte Summon;        // -1 = 없음, 0~2 = 몬스터 종류
-        public bool Buff;
+        public sbyte Summon;        // -1 = 없음, 0~3 = 손패 카드 칸 (왕)
+        public bool Buff;           // (예전 Q 버프 — 지금은 카드로 대체, 프로토콜 호환용)
         public sbyte PickClass;     // -1 = 없음, 0 = 희망 취소(기사), 1 = 왕 희망 (투표 라운드 준비 단계)
         public sbyte Vote;          // -1 = 없음, 0~11 = 그 칸에 투표, 127 = 투표 취소
     }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using KnifeWar.Core;
 using Unity.Burst;
 using Unity.Collections;
@@ -9,13 +10,14 @@ using UnityEngine.Rendering;
 namespace KnifeWar.Game
 {
     /// <summary>
-    /// 몬스터를 GPU 인스턴싱으로 그린다 (오브젝트 생성 없음). 팀 2 × 종류 3 = 6묶음.
-    /// SkinSet에 몬스터 메시·재질이 있으면 그걸로, 없으면 기본 캡슐.
+    /// 몬스터를 GPU 인스턴싱으로 그린다 (오브젝트 생성 없음). 팀 2 × 종류 7 = 14묶음.
+    /// SkinSet에 몬스터 메시·재질이 있으면 그걸로, 없으면 코드로 조립한 임시 모양 (ProceduralMonsterMeshes).
+    /// 높이는 MapLayout.HeightAt (성 경사로·2층) 을 따른다 — 시뮬레이션은 2D라서 그릴 때만 올린다.
     /// </summary>
     public sealed class MonsterRenderer : MonoBehaviour
     {
         const int Batch = 1023;
-        const int Types = 3;
+        const int Types = MonsterDefs.TypeCount;
         const int Groups = 2 * Types;   // [team * Types + type]
 
         MatchController _m;
@@ -29,15 +31,9 @@ namespace KnifeWar.Game
         public void Init(MatchController m)
         {
             _m = m;
-            var tmp = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            var capsule = tmp.GetComponent<MeshFilter>().sharedMesh;
-            Destroy(tmp);
-
             var skin = SkinSet.Current;
             _scale = new NativeArray<float3>(Types, Allocator.Persistent);
             _lift = new NativeArray<float>(Types, Allocator.Persistent);
-            // 기본 캡슐: 졸병 0.8m, 탱커 1.3m, 원거리 1.0m 높이
-            float[] ds = { 0.4f, 0.65f, 0.33f }, dh = { 0.42f, 0.65f, 0.5f };
             for (int t = 0; t < Types; t++)
             {
                 var custom = skin != null && skin.MonsterMesh != null && t < skin.MonsterMesh.Length ? skin.MonsterMesh[t] : null;
@@ -46,17 +42,17 @@ namespace KnifeWar.Game
                     float k = skin.MonsterScale != null && t < skin.MonsterScale.Length && skin.MonsterScale[t] > 0f ? skin.MonsterScale[t] : 1f;
                     _mesh[t] = custom;
                     _scale[t] = new float3(k, k, k);
-                    _lift[t] = 0f;   // 사용자 메시는 발이 원점
                 }
                 else
                 {
-                    _mesh[t] = capsule;
-                    _scale[t] = new float3(ds[t], dh[t], ds[t]);
-                    _lift[t] = dh[t];
+                    _mesh[t] = ProceduralMonsterMeshes.Get(t);   // 발이 원점
+                    _scale[t] = new float3(1f, 1f, 1f);
                 }
+                _lift[t] = 0f;
             }
 
-            var bounds = new Bounds(Vector3.zero, new Vector3(300f, 60f, 60f));
+            var bounds = new Bounds(Vector3.zero, new Vector3(400f, 60f, 60f));
+            Material fire = null;
             for (int team = 0; team < 2; team++)
             {
                 Material mat = null;
@@ -67,12 +63,17 @@ namespace KnifeWar.Game
                     mat = new Material(mat) { enableInstancing = true };   // 인스턴싱이 꺼진 재질이면 켠 사본을 쓴다
                 }
                 for (int t = 0; t < Types; t++)
-                    _rp[team * Types + t] = new RenderParams(mat)
+                {
+                    Material use = mat;
+                    if (t == MonsterDefs.FireGolem && (skin == null || skin.MonsterMesh == null || t >= skin.MonsterMesh.Length || skin.MonsterMesh[t] == null))
+                        use = fire ??= ProceduralMonsterMeshes.FireMaterial(mat);
+                    _rp[team * Types + t] = new RenderParams(use)
                     {
                         worldBounds = bounds,
                         shadowCastingMode = ShadowCastingMode.On,
                         receiveShadows = true,
                     };
+                }
             }
 
             _out = new NativeArray<Matrix4x4>(m.Monsters.Capacity * Groups, Allocator.Persistent);
@@ -96,7 +97,10 @@ namespace KnifeWar.Game
             new BuildJob
             {
                 Capacity = s.Capacity,
-                HalfLength = MatchController.LaneHalf,
+                LaneHalf = MapLayout.LaneHalf,
+                RampStart = MapLayout.RampStartX,
+                RampEnd = MapLayout.RampEndX,
+                Floor2 = MapLayout.Floor2Y,
                 Time = Time.time,
                 Alive = s.Alive,
                 Team = s.Team,
@@ -125,7 +129,7 @@ namespace KnifeWar.Game
         struct BuildJob : IJob
         {
             public int Capacity;
-            public float HalfLength;
+            public float LaneHalf, RampStart, RampEnd, Floor2;
             public float Time;
             [ReadOnly] public NativeArray<byte> Alive;
             [ReadOnly] public NativeArray<byte> Team;
@@ -152,13 +156,121 @@ namespace KnifeWar.Game
                     float bob = attacking
                         ? math.abs(math.sin(Time * 14f + m)) * 0.12f
                         : math.abs(math.sin(Time * 9f + m * 0.37f)) * 0.07f;
-                    float3 p = new float3(Pos[m] / 1000f - HalfLength, Lift[type] + bob, Lat[m] / 1000f);
+                    float x = Pos[m] / 1000f - LaneHalf;
+                    float ax = math.abs(x);
+                    float ground = ax <= RampStart ? 0f : (ax >= RampEnd ? Floor2 : (ax - RampStart) / (RampEnd - RampStart) * Floor2);
+                    float3 p = new float3(x, ground + Lift[type] + bob, Lat[m] / 1000f);
                     int g = team * Types + type;
                     int n = Counts[g];
                     Out[g * Capacity + n] = (Matrix4x4)float4x4.TRS(p, team == 0 ? face0 : face1, Scale[type]);
                     Counts[g] = n + 1;
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// 진짜 몬스터 모델이 없을 때 쓰는 임시 모양: 기본 도형(캡슐·구·상자)을 하나의 메시로 합친다.
+    /// 발이 원점(y=0), 앞이 +z. 인스턴싱으로 수백 마리를 그려도 드로우콜은 종류당 1개.
+    /// </summary>
+    public static class ProceduralMonsterMeshes
+    {
+        static readonly Mesh[] _cache = new Mesh[MonsterDefs.TypeCount];
+        static Mesh _capsule, _sphere, _cube;
+
+        public static Mesh Get(int type)
+        {
+            type = Mathf.Clamp(type, 0, MonsterDefs.TypeCount - 1);
+            if (_cache[type] != null) return _cache[type];
+            EnsurePrims();
+            var parts = new List<CombineInstance>();
+            void Cap(float x, float y, float z, float h, float r) => Add(parts, _capsule, new Vector3(x, y, z), new Vector3(r * 2f, h * 0.5f, r * 2f));
+            void Sph(float x, float y, float z, float r) => Add(parts, _sphere, new Vector3(x, y, z), new Vector3(r * 2f, r * 2f, r * 2f));
+            void Box(float x, float y, float z, float sx, float sy, float sz) => Add(parts, _cube, new Vector3(x, y, z), new Vector3(sx, sy, sz));
+
+            switch (type)
+            {
+                case MonsterDefs.Footman:      // 졸병: 작은 캡슐 + 창
+                    Cap(0f, 0.45f, 0f, 0.9f, 0.2f);
+                    Box(0.22f, 0.7f, 0.1f, 0.04f, 1.4f, 0.04f);
+                    break;
+                case MonsterDefs.Shield:       // 방패병: 굵은 캡슐 + 큰 방패 앞에
+                    Cap(0f, 0.6f, 0f, 1.2f, 0.3f);
+                    Box(0f, 0.6f, 0.36f, 0.7f, 0.9f, 0.08f);
+                    break;
+                case MonsterDefs.Archer:       // 궁수: 가는 캡슐 + 활
+                    Cap(0f, 0.5f, 0f, 1.0f, 0.17f);
+                    Box(0.2f, 0.55f, 0.05f, 0.03f, 0.9f, 0.06f);
+                    break;
+                case MonsterDefs.Ogre:         // 오우거: 큰 캡슐 + 머리 + 두 팔
+                    Cap(0f, 1.0f, 0f, 2.0f, 0.55f);
+                    Sph(0f, 2.15f, 0.1f, 0.36f);
+                    Box(-0.75f, 1.1f, 0.15f, 0.3f, 1.2f, 0.3f);
+                    Box(0.75f, 1.1f, 0.15f, 0.3f, 1.2f, 0.3f);
+                    break;
+                case MonsterDefs.TwinOgre:     // 트윈헤드 오우거: 더 큰 몸 + 머리 둘
+                    Cap(0f, 1.1f, 0f, 2.2f, 0.62f);
+                    Sph(-0.3f, 2.35f, 0.1f, 0.34f);
+                    Sph(0.3f, 2.35f, 0.1f, 0.34f);
+                    Box(-0.85f, 1.2f, 0.15f, 0.34f, 1.3f, 0.34f);
+                    Box(0.85f, 1.2f, 0.15f, 0.34f, 1.3f, 0.34f);
+                    break;
+                case MonsterDefs.DeathKnight:  // 데스나이트: 키 큰 캡슐 + 투구 + 대검
+                    Cap(0f, 0.9f, 0f, 1.8f, 0.3f);
+                    Box(0f, 1.85f, 0f, 0.42f, 0.32f, 0.42f);
+                    Box(0.42f, 1.0f, 0.2f, 0.08f, 1.6f, 0.16f);
+                    Box(0f, 1.3f, -0.32f, 0.9f, 1.2f, 0.05f);   // 망토
+                    break;
+                default:                       // 화염 골렘: 상자 몸 + 머리 + 굵은 팔
+                    Box(0f, 1.1f, 0f, 1.4f, 1.8f, 1.0f);
+                    Box(0f, 2.3f, 0.1f, 0.7f, 0.6f, 0.7f);
+                    Box(-1.0f, 1.0f, 0.1f, 0.5f, 1.7f, 0.5f);
+                    Box(1.0f, 1.0f, 0.1f, 0.5f, 1.7f, 0.5f);
+                    Box(-0.4f, 0.25f, 0f, 0.5f, 0.5f, 0.6f);
+                    Box(0.4f, 0.25f, 0f, 0.5f, 0.5f, 0.6f);
+                    break;
+            }
+
+            var mesh = new Mesh { name = "Monster_" + type };
+            mesh.CombineMeshes(parts.ToArray(), true, true);
+            mesh.RecalculateBounds();
+            _cache[type] = mesh;
+            return mesh;
+        }
+
+        static void Add(List<CombineInstance> parts, Mesh m, Vector3 pos, Vector3 scale)
+        {
+            parts.Add(new CombineInstance { mesh = m, transform = Matrix4x4.TRS(pos, Quaternion.identity, scale) });
+        }
+
+        static void EnsurePrims()
+        {
+            if (_capsule != null) return;
+            _capsule = Prim(PrimitiveType.Capsule);
+            _sphere = Prim(PrimitiveType.Sphere);
+            _cube = Prim(PrimitiveType.Cube);
+        }
+
+        static Mesh Prim(PrimitiveType t)
+        {
+            var go = GameObject.CreatePrimitive(t);
+            var m = go.GetComponent<MeshFilter>().sharedMesh;
+            Object.Destroy(go);
+            return m;
+        }
+
+        /// <summary>화염 골렘 재질: 팀 색 대신 용암색 + 발광.</summary>
+        public static Material FireMaterial(Material baseMat)
+        {
+            var shader = baseMat != null ? baseMat.shader : Shader.Find("Standard");
+            var m = new Material(shader) { name = "Monster_Fire", enableInstancing = true, color = new Color(0.95f, 0.35f, 0.08f) };
+            if (m.HasProperty("_EmissionColor"))
+            {
+                m.EnableKeyword("_EMISSION");
+                m.SetColor("_EmissionColor", new Color(1.2f, 0.35f, 0.05f));
+            }
+            if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", 0.3f);
+            return m;
         }
     }
 }

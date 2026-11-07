@@ -15,7 +15,6 @@ namespace KnifeWar.Game
         float _strafe;
         float _strafeTimer;
         float _nextSummon;
-        float _nextBuff;
         int _target = -1;
         int _voteRound = -1;      // 이번 준비 단계에서 희망·투표를 냈는지
         float _voteAt;
@@ -36,7 +35,6 @@ namespace KnifeWar.Game
             _target = -1;
             _reactUntil = now + Rand(0.2f, 0.8f);
             _nextSummon = now + Rand(0.5f, 2f);
-            _nextBuff = now + Rand(6f, 15f);
         }
 
         public PlayerIntent Think(MatchController m, float now, float dt)
@@ -151,25 +149,31 @@ namespace KnifeWar.Game
 
         PlayerIntent ThinkWizard(MatchController m, PlayerIntent i, float now, Vector3 pos, float dir)
         {
-            // 자기 진영 쪽 다리 입구 근처에서 대기
-            float homeX = _me.Team == 0 ? -52f : 52f;
+            // 2층 테이블 앞에서 대기 (내려오지 않는다)
+            float homeX = -dir * (MapLayout.TableX - 1.8f);
             Vector3 goal = new Vector3(homeX, pos.y, (_me.Index % 3 - 1) * 1.0f);
             Vector3 to = goal - pos;
             to.y = 0f;
             i.Yaw = Mathf.MoveTowardsAngle(_me.Yaw, dir > 0 ? 90f : -90f, 360f * Time.deltaTime);
-            if (to.magnitude > 0.6f) i.Move = WorldToMove(SafeOnBridge(pos, to.normalized), i.Yaw);
+            if (to.magnitude > 0.6f) i.Move = WorldToMove(to.normalized, i.Yaw);
 
             if (now >= _nextSummon)
             {
+                // 손패 중 마나로 쓸 수 있는 카드를 고른다 (비싼 카드도 가끔 기다렸다가 쓴다)
                 float mana = m.Wizard.Mana(_me.Index);
-                sbyte pick = (sbyte)(mana >= 30f && Rand(0f, 1f) < 0.35f ? 1 : (Rand(0f, 1f) < 0.4f ? 2 : 0));
-                if (mana >= WizardRules.CostOf((byte)pick)) i.Summon = pick;
-                _nextSummon = now + Rand(0.4f, 1.6f);
-            }
-            if (now >= _nextBuff && m.Wizard.Mana(_me.Index) >= MatchController.BuffCost)
-            {
-                i.Buff = true;
-                _nextBuff = now + Rand(10f, 20f);
+                int pick = -1, n = 0;
+                bool saving = Rand(0f, 1f) < 0.3f;   // 30%: 비싼 카드를 위해 모은다
+                for (int slot = 0; slot < WizardRules.HandSize; slot++)
+                {
+                    int id = m.Wizard.Hand(_me.Index, slot);
+                    if (!CardDefs.IsValidId(id)) continue;
+                    int cost = CardDefs.Get(id).Cost;
+                    if (cost > mana) continue;
+                    if (saving && cost < 30f && mana < 70f) continue;
+                    if (_rng.Next(++n) == 0) pick = slot;
+                }
+                if (pick >= 0) i.Summon = (sbyte)pick;
+                _nextSummon = now + Rand(0.6f, 2.0f);
             }
             return i;
         }

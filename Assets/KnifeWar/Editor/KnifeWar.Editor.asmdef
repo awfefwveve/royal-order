@@ -2,6 +2,7 @@
     "name": "KnifeWar.Editor",
     "rootNamespace": "KnifeWar.EditorTools",
     "references": [
+        "KnifeWar.Core",
         "KnifeWar.Bench",
         "KnifeWar.Game"
     ],

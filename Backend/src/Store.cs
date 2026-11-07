@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 
 namespace KnifeWar.Backend;
@@ -43,6 +44,31 @@ public sealed class AccountExtra
     public List<string> Friends { get; set; } = new();          // 친구 계정 id (서로 들어 있음)
     public List<string> FriendRequestsIn { get; set; } = new(); // 받은 친구 요청
     public List<string> FriendRequestsOut { get; set; } = new();// 보낸 친구 요청
+    public string Deck { get; set; } = "";                      // 왕 카드 덱 "0,0,2,1,3,7,9,6" (비어 있으면 기본 덱)
+}
+
+/// <summary>덱 규칙 (게임 Core/CardDefs 와 같은 값: 8장, 카드 id 0~CardCount-1, 같은 카드 2장까지). 카드가 늘면 CardCount 를 같이 올린다.</summary>
+public static class DeckRules
+{
+    public const int CardCount = 10;
+    public const int DeckSize = 8;
+    public const int MaxCopies = 2;
+
+    public static bool IsValid(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var parts = text.Split(',');
+        if (parts.Length != DeckSize) return false;
+        var copies = new int[CardCount];
+        foreach (var p in parts)
+        {
+            if (!int.TryParse(p.Trim(), out int id) || id < 0 || id >= CardCount) return false;
+            if (++copies[id] > MaxCopies) return false;
+        }
+        return true;
+    }
+
+    public static string Normalize(string text) => string.Join(",", text.Split(',').Select(p => p.Trim()));
 }
 
 /// <summary>플레이어 신고.</summary>

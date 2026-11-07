@@ -134,6 +134,7 @@ namespace KnifeWar.Net
                     ushort version = r.UShort();
                     peer.SimLatencyMs = r.Float();
                     string token = r.Str();
+                    string deckText = r.HasMore ? r.Str() : "";
                     if (version != NetProtocol.Version)
                     {
                         Debug.LogWarning($"[KnifeWar] 버전 불일치 client={version} server={NetProtocol.Version}");
@@ -174,6 +175,7 @@ namespace KnifeWar.Net
                         Reject(peer, RejectReason.Full);
                         return;
                     }
+                    _m.Wizard.SetDeck(peer.Slot, CardDefs.Parse(deckText));   // 규칙에 안 맞으면 기본 덱
                     _w.Clear();
                     _w.Byte((byte)Msg.Welcome);
                     _w.Byte((byte)peer.Slot);
@@ -271,13 +273,15 @@ namespace KnifeWar.Net
                 _w.Byte((byte)round.Score[1]);
                 _w.SByte((sbyte)round.LastRoundWinner);
                 _w.SByte((sbyte)round.MatchWinner);
-                _w.Int(BuffEnd(0));
-                _w.Int(BuffEnd(1));
+                WriteTeamKing(0);
+                WriteTeamKing(1);
                 var me = _m.Avatars[peer.Slot];
                 _w.Float(me.Velocity.x);
                 _w.Float(me.Velocity.y);
                 _w.Float(me.Velocity.z);
                 _w.Float(_m.Wizard.Mana(peer.Slot));
+                var hand = _m.HandOf(peer.Slot);
+                _w.Byte(hand.C0); _w.Byte(hand.C1); _w.Byte(hand.C2); _w.Byte(hand.C3); _w.Byte(hand.Next);
                 for (int p = 0; p < MatchController.MaxPlayers; p++) NetProtocol.WritePlayer(_w, _states[p]);
                 _w.Byte((byte)corrSlots.Count);
                 for (int k = 0; k < corrSlots.Count; k++)
@@ -356,10 +360,14 @@ namespace KnifeWar.Net
                 if (peer.Slot >= 0) _net.Send(peer.Conn, true, _w, peer.SimLatencyMs);
         }
 
-        int BuffEnd(int team)
+        void WriteTeamKing(int team)
         {
-            var b = _m.Wizard.TeamBuffs[team];
-            return b.IsActive(_m.ServerTick) ? b.EndTick : 0;
+            var t = _m.TeamKing(team);
+            _w.Int(t.BuffEnd);
+            _w.SByte((sbyte)t.FieldId);
+            _w.Int(t.FieldEnd);
+            _w.Byte(t.Barracks);
+            _w.Byte(t.Wells);
         }
     }
 }

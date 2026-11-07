@@ -63,10 +63,11 @@ namespace KnifeWar.Game
             }
             else if (phase == RoundPhase.Live)
             {
+                // 왕: 1~4 = 손패 카드 사용 (화면의 카드를 눌러도 됨)
                 if (GameSettings.Down(Bind.Slot1)) i.Summon = 0;
                 if (GameSettings.Down(Bind.Slot2)) i.Summon = 1;
                 if (GameSettings.Down(Bind.Slot3)) i.Summon = 2;
-                if (GameSettings.Down(Bind.Buff)) i.Buff = true;
+                if (GameSettings.Down(Bind.Slot4)) i.Summon = 3;
                 if (locked)
                 {
                     if (GameSettings.Down(Bind.Slash)) i.Attack = KnifeAttack.Slash;

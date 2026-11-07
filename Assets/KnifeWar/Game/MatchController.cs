@@ -44,7 +44,7 @@ namespace KnifeWar.Game
     /// - Offline / Host / Server: 서버 권위 시뮬레이션 (라운드·이동·칼·몬스터 전부 여기서 결정)
     /// - Client: 서버 상태를 받아 보여주고, 내 캐릭터만 예측 이동한다
     ///
-    /// 월드 좌표: 다리는 X축 방향, x = -60(블루) ~ +60(레드), 폭 4m, 다리 윗면 y = 0.
+    /// 월드 좌표: 다리는 X축 방향, x = -60(블루 성문) ~ +60(레드 성문), 폭 12m, 다리 윗면 y = 0. 성 안은 MapLayout.
     /// </summary>
     public sealed class MatchController : MonoBehaviour
     {
@@ -53,13 +53,10 @@ namespace KnifeWar.Game
         public static readonly int[] SupportedTickRates = { 64, 128 };
         public const int PlayersPerTeam = 6;
         public const int MaxPlayers = PlayersPerTeam * 2;
-        public const float LaneHalf = 60f;
+        /// <summary>레인 좌표 원점까지 거리 (m) = 성 뒤쪽. 다리 자체는 ±MapLayout.BridgeHalf.</summary>
+        public const float LaneHalf = MapLayout.LaneHalf;
         /// <summary>다리 폭의 절반 (m). LaneConfig.HalfWidthMm 과 같은 값.</summary>
         public const float BridgeHalfWidth = 6f;
-        public const int BuffId = 1;
-        public const int BuffCost = 25;
-        public const int BuffSeconds = 8;
-        public const float BuffSpeed = 1.15f;
         public const float KillY = -6f;
         public const int PlayerLayer = 8;
         public const int MaxCommandsPerTick = 6;
@@ -100,8 +97,7 @@ namespace KnifeWar.Game
         PlayerIntent _humanIntent;
 
         readonly KnifeAttack[] _pendingAttack = new KnifeAttack[MaxPlayers];
-        readonly sbyte[] _pendingSummon = new sbyte[MaxPlayers];
-        readonly bool[] _pendingBuff = new bool[MaxPlayers];
+        readonly sbyte[] _pendingCard = new sbyte[MaxPlayers];   // 손패 칸 (왕 카드 사용)
         readonly sbyte[] _pendingPick = new sbyte[MaxPlayers];
         readonly sbyte[] _pendingVote = new sbyte[MaxPlayers];
         readonly int[] _viewTick = new int[MaxPlayers];
@@ -119,6 +115,7 @@ namespace KnifeWar.Game
         NativeArray<MeleeQuery> _mq;
         NativeArray<int> _mr;
         RoundPhase _lastPhase = (RoundPhase)255;
+        int _matchSeed;   // 덱 섞기 시드 (서버만 의미 있음)
 
         /// <summary>이번 서버 틱에 일어난 일 (네트워크 서버가 클라에 보낸다).</summary>
         public readonly List<GameEvent> TickEvents = new List<GameEvent>();
@@ -189,13 +186,14 @@ namespace KnifeWar.Game
                 Avatars[p] = CreateAvatar(p, team);
                 Combat.Teams[p] = team;
                 _commands[p] = new Queue<NetCommand>();
-                _pendingSummon[p] = -1;
+                _pendingCard[p] = -1;
                 _pendingPick[p] = -1;
                 _bots[p] = new BotBrain(Avatars[p], 1000 + p * 17);
                 int local = p % PlayersPerTeam;
                 _bots[p].PreferredClass = local == 5 ? PlayerClass.King : PlayerClass.Knight;   // 왕은 팀당 1명
             }
             GameSettings.Load();
+            _matchSeed = UnityEngine.Random.Range(1, int.MaxValue);
         }
 
         void OnDestroy()
@@ -260,10 +258,13 @@ namespace KnifeWar.Game
                 Avatars[p].LocalLook = p == humanSlot;
             }
 
+            if (IsAuthority && humanSlot >= 0) Wizard.SetDeck(humanSlot, DeckStore.Current);   // 오프라인·호스트: 내 덱
+
             if (role != NetRole.Server)
             {
                 ApplySkin(SkinSet.Current, humanSlot);
                 gameObject.AddComponent<MonsterRenderer>().Init(this);
+                gameObject.AddComponent<WorldEffects>().Init(this);
                 CreateCamera();
                 Feedback = gameObject.AddComponent<GameFeedback>();
                 Feedback.Init(this);
@@ -361,8 +362,7 @@ namespace KnifeWar.Game
                 var i = _human.Sample(Round.Phase);
                 _humanIntent = i;
                 if (i.Attack != KnifeAttack.None) _pendingAttack[HumanIndex] = i.Attack;
-                if (i.Summon >= 0) _pendingSummon[HumanIndex] = i.Summon;
-                if (i.Buff) _pendingBuff[HumanIndex] = true;
+                if (i.Summon >= 0) _pendingCard[HumanIndex] = i.Summon;
                 if (i.PickClass >= 0) _pendingPick[HumanIndex] = i.PickClass;
                 var h = Human;
                 h.LookYaw = i.Yaw;
@@ -404,7 +404,7 @@ namespace KnifeWar.Game
                 var a = Avatars[p];
                 a.Frozen = phase != RoundPhase.Live;
                 bool buffed = a.Class == PlayerClass.Knight && Wizard.TeamBuffs[a.Team].IsActive(tick);
-                a.SpeedMultiplier = buffed ? BuffSpeed : 1f;
+                a.SpeedMultiplier = buffed ? BuffType.WarHornSpeed : 1f;
 
                 switch (Slots[p])
                 {
@@ -514,29 +514,34 @@ namespace KnifeWar.Game
 
             // ---- 몬스터 ----
             Monsters.PrepareTick();
+            Monsters.TeamFire[0] = (byte)(Wizard.FireActive(0, tick) ? 1 : 0);
+            Monsters.TeamFire[1] = (byte)(Wizard.FireActive(1, tick) ? 1 : 0);
             if (phase == RoundPhase.Live)
             {
                 for (int p = 0; p < MaxPlayers; p++)
                 {
-                    if (_pendingSummon[p] >= 0)
+                    if (_pendingCard[p] >= 0)
                     {
-                        var r = Wizard.TrySummon(p, (byte)_pendingSummon[p], Round, Monsters);
-                        if (r == WizardRules.SummonResult.Ok) Emit(new GameEvent { Type = GameEventType.Summon, A = p });
+                        bool fieldBefore0 = Wizard.TeamField[0].IsActive(tick), fieldBefore1 = Wizard.TeamField[1].IsActive(tick);
+                        var r = Wizard.TryPlay(p, _pendingCard[p], Round, Monsters, tick, out int cardId);
+                        if (r == WizardRules.SummonResult.Ok)
+                        {
+                            Emit(new GameEvent { Type = GameEventType.Summon, A = p, B = cardId });
+                            int team = Round.Team[p];
+                            if (Wizard.TeamField[team].IsActive(tick) != (team == 0 ? fieldBefore0 : fieldBefore1))
+                                Emit(new GameEvent { Type = GameEventType.Field, A = team, B = Wizard.TeamField[team].BuffId, D = Wizard.TeamField[team].EndTick });
+                        }
                         else if (r != WizardRules.SummonResult.Dead) Emit(new GameEvent { Type = GameEventType.Message, A = p, B = (int)SummonMessage(r) });
                     }
-                    if (_pendingBuff[p])
-                    {
-                        bool ok = Wizard.TryBuff(p, BuffId, BuffSeconds, BuffCost, tick, Round);
-                        Emit(new GameEvent { Type = GameEventType.Message, A = p, B = (int)(ok ? GameMessage.BuffOk : GameMessage.BuffFail) });
-                    }
-                    _pendingSummon[p] = -1;
-                    _pendingBuff[p] = false;
+                    _pendingCard[p] = -1;
                 }
-                Wizard.Tick(tick, Round);
+                Wizard.Tick(tick, Round, Monsters);   // 마나 회복 + 병영 생산
+                Monsters.TeamFire[0] = (byte)(Wizard.FireActive(0, tick) ? 1 : 0);
+                Monsters.TeamFire[1] = (byte)(Wizard.FireActive(1, tick) ? 1 : 0);
             }
             else
             {
-                for (int p = 0; p < MaxPlayers; p++) { _pendingSummon[p] = -1; _pendingBuff[p] = false; }
+                for (int p = 0; p < MaxPlayers; p++) _pendingCard[p] = -1;
             }
 
             for (int s = 0; s < Combat.Swings.Length; s++)
@@ -575,8 +580,7 @@ namespace KnifeWar.Game
         void CollectEdges(int p, in PlayerIntent i)
         {
             if (i.Attack != KnifeAttack.None) _pendingAttack[p] = i.Attack;
-            if (i.Summon >= 0) _pendingSummon[p] = i.Summon;
-            if (i.Buff) _pendingBuff[p] = true;
+            if (i.Summon >= 0) _pendingCard[p] = i.Summon;
             if (i.PickClass >= 0) _pendingPick[p] = i.PickClass;
             if (i.Vote >= 0) _pendingVote[p] = i.Vote;
         }
@@ -592,6 +596,7 @@ namespace KnifeWar.Game
                 case WizardRules.SummonResult.NoMana: return GameMessage.NoMana;
                 case WizardRules.SummonResult.TeamCap: return GameMessage.TeamCap;
                 case WizardRules.SummonResult.NotWizard: return GameMessage.NotKing;
+                case WizardRules.SummonResult.Limit: return GameMessage.Limit;
                 default: return GameMessage.SummonFail;
             }
         }
@@ -619,25 +624,38 @@ namespace KnifeWar.Game
                 case RoundPhase.Live:
                     Debug.Log($"[KnifeWar] round {Round.RoundNumber} live");
                     Combat.ResetForRound();
-                    Wizard.ResetForRound();
+                    Wizard.ResetForRound(Round.RoundNumber, _matchSeed);
+                    Monsters.Complete();
+                    Monsters.TeamFire[0] = Monsters.TeamFire[1] = 0;
                     for (int p = 0; p < MaxPlayers; p++)
                     {
+                        bool wasKing = Avatars[p].Class == PlayerClass.King;
                         Avatars[p].SetClass(Round.Class[p]);
                         Avatars[p].SetAlive(Round.Alive[p]);
+                        if (wasKing != (Round.Class[p] == PlayerClass.King)) Spawn(p);   // 투표로 왕이 바뀌면 자리(2층/1층)도 바꿔 준다
                         _bots[p].OnRoundStart(Time.time);
                     }
                     break;
             }
         }
 
+        /// <summary>스폰: 기사는 성 1층 홀, 왕은 2층 테이블 앞. 둘 다 적 쪽을 본다.</summary>
         void Spawn(int p)
         {
             var a = Avatars[p];
             int local = p % PlayersPerTeam;
-            float x = a.Team == 0 ? -64f + (local / 3) * -1.5f : 64f + (local / 3) * 1.5f;
-            float z = (local % 3 - 1) * 1.6f;
+            float side = a.Team == 0 ? -1f : 1f;
             float yaw = a.Team == 0 ? 90f : -90f;
-            a.Teleport(new Vector3(x, 0.05f, z), yaw);
+            if (a.Class == PlayerClass.King)
+            {
+                a.Teleport(new Vector3(side * (MapLayout.TableX - 1.6f), MapLayout.Floor2Y + 0.05f, 0f), yaw);
+            }
+            else
+            {
+                float x = side * (MapLayout.GateX + 2.2f + (local / 3) * 1.5f);
+                float z = (local % 3 - 1) * 1.6f;
+                a.Teleport(new Vector3(x, 0.05f, z), yaw);
+            }
             if (p == HumanIndex) _human.Reset(yaw);
         }
 
@@ -654,8 +672,8 @@ namespace KnifeWar.Game
 
         // ---- 몬스터 ----
 
-        public static int LaneX(float worldX) => (int)math.round((worldX + LaneHalf) * 1000f);
-        public static float WorldX(int laneX) => laneX / 1000f - LaneHalf;
+        public static int LaneX(float worldX) => MapLayout.LaneX(worldX);
+        public static float WorldX(int laneX) => MapLayout.WorldX(laneX);
 
         void HitMonster(in KnifeSwing sw)
         {
@@ -797,6 +815,11 @@ namespace KnifeWar.Game
                 case GameEventType.Summon:
                     Feedback?.OnSummon(e.A);
                     if (Avatars[e.A].Model != null) Avatars[e.A].Model.Summon();
+                    if (e.A == HumanIndex && CardDefs.IsValidId(e.B)) ShowMessage(L.T("card_used", L.T("card_" + CardDefs.Get(e.B).Key + "_name")));
+                    break;
+                case GameEventType.Field:
+                    if (Role == NetRole.Client) Wizard.SetFieldMirror(e.A, e.B, e.D);
+                    Feedback?.OnField(e.A, e.B);
                     break;
                 case GameEventType.Message:
                     if (e.A == HumanIndex) ShowMessage(GameText.Message((GameMessage)e.B));
@@ -833,7 +856,7 @@ namespace KnifeWar.Game
             int estTick = (int)_clientClock;
             me.Frozen = Round.Phase != RoundPhase.Live;
             bool buffed = me.Class == PlayerClass.Knight && Wizard.TeamBuffs[me.Team].IsActive(estTick);
-            me.SpeedMultiplier = buffed ? BuffSpeed : 1f;
+            me.SpeedMultiplier = buffed ? BuffType.WarHornSpeed : 1f;
 
             PlayerIntent intent;
             if (HumanIsBot)
@@ -846,14 +869,12 @@ namespace KnifeWar.Game
             {
                 intent = _humanIntent;
                 intent.Attack = _pendingAttack[HumanIndex];
-                intent.Summon = _pendingSummon[HumanIndex];
-                intent.Buff = _pendingBuff[HumanIndex];
+                intent.Summon = _pendingCard[HumanIndex];
                 intent.PickClass = _pendingPick[HumanIndex];
                 intent.Vote = _pendingVote[HumanIndex];
             }
             _pendingAttack[HumanIndex] = KnifeAttack.None;
-            _pendingSummon[HumanIndex] = -1;
-            _pendingBuff[HumanIndex] = false;
+            _pendingCard[HumanIndex] = -1;
             _pendingPick[HumanIndex] = -1;
             _pendingVote[HumanIndex] = -1;
 
@@ -886,10 +907,25 @@ namespace KnifeWar.Game
             ClientCommandReady?.Invoke(cmd);
         }
 
+        /// <summary>스냅샷에 실리는 팀 공통 왕 정보 (버프·필드·건물).</summary>
+        public struct TeamKingState
+        {
+            public int BuffEnd;      // 나팔 등 기사 버프 끝 틱 (0 = 없음)
+            public int FieldId;      // 필드 효과 id (-1 없음)
+            public int FieldEnd;
+            public byte Barracks, Wells;
+        }
+
+        /// <summary>스냅샷에 실리는 내 손패.</summary>
+        public struct HandState
+        {
+            public byte C0, C1, C2, C3, Next;
+        }
+
         /// <summary>서버 스냅샷 수신.</summary>
-        public void ClientReceiveSnapshot(SnapshotFrame frame, uint ackSeq, Vector3 myVelocity, float myMana,
+        public void ClientReceiveSnapshot(SnapshotFrame frame, uint ackSeq, Vector3 myVelocity, float myMana, in HandState hand,
             RoundPhase phase, int roundNumber, int phaseEndTick, int score0, int score1, int lastWinner, int matchWinner,
-            int buffEnd0, int buffEnd1)
+            TeamKingState team0, TeamKingState team1)
         {
             if (frame.Tick < LastSnapshotTick) return;   // 순서가 뒤바뀐 옛 스냅샷은 버림
 
@@ -913,8 +949,8 @@ namespace KnifeWar.Game
                 if (phase == RoundPhase.Select) { Monsters.Clear(); SelectCursor(); }
                 else if (phase == RoundPhase.Live) LockCursor();
             }
-            if (buffEnd0 > 0) Wizard.TeamBuffs[0].Apply(BuffId, buffEnd0); else Wizard.TeamBuffs[0].Clear();
-            if (buffEnd1 > 0) Wizard.TeamBuffs[1].Apply(BuffId, buffEnd1); else Wizard.TeamBuffs[1].Clear();
+            ApplyTeamKingMirror(0, team0);
+            ApplyTeamKingMirror(1, team1);
 
             for (int p = 0; p < MaxPlayers; p++)
             {
@@ -931,8 +967,40 @@ namespace KnifeWar.Game
 
             if (HumanIndex < 0) return;
             Wizard.SetManaMirror(HumanIndex, myMana);
+            Wizard.SetHandMirror(HumanIndex, hand.C0, hand.C1, hand.C2, hand.C3, hand.Next);
             Reconcile(frame.Players[HumanIndex], ackSeq, myVelocity);
         }
+
+        void ApplyTeamKingMirror(int team, in TeamKingState t)
+        {
+            if (t.BuffEnd > 0) Wizard.TeamBuffs[team].Apply(BuffType.WarHorn, t.BuffEnd); else Wizard.TeamBuffs[team].Clear();
+            Wizard.SetFieldMirror(team, t.FieldId, t.FieldEnd);
+            Wizard.Buildings[team].Set(BuildingType.Barracks, t.Barracks);
+            Wizard.Buildings[team].Set(BuildingType.ManaWell, t.Wells);
+            Monsters.Complete();
+            Monsters.TeamFire[team] = (byte)(Wizard.FireActive(team, ServerTick) ? 1 : 0);
+        }
+
+        /// <summary>서버: 스냅샷용 팀 왕 정보.</summary>
+        public TeamKingState TeamKing(int team)
+        {
+            var b = Wizard.TeamBuffs[team];
+            var f = Wizard.TeamField[team];
+            return new TeamKingState
+            {
+                BuffEnd = b.IsActive(ServerTick) ? b.EndTick : 0,
+                FieldId = f.IsActive(ServerTick) ? f.BuffId : -1,
+                FieldEnd = f.IsActive(ServerTick) ? f.EndTick : 0,
+                Barracks = (byte)Wizard.Buildings[team].Count(BuildingType.Barracks),
+                Wells = (byte)Wizard.Buildings[team].Count(BuildingType.ManaWell),
+            };
+        }
+
+        public HandState HandOf(int player) => new HandState
+        {
+            C0 = Wizard.Hand(player, 0), C1 = Wizard.Hand(player, 1), C2 = Wizard.Hand(player, 2), C3 = Wizard.Hand(player, 3),
+            Next = Wizard.NextCard(player),
+        };
 
         void Reconcile(in PlayerNetState server, uint ackSeq, Vector3 serverVel)
         {
@@ -1025,9 +1093,10 @@ namespace KnifeWar.Game
             else LockCursor();
         }
 
-        /// <summary>화면(HUD)에서 누른 왕 희망·투표를 다음 명령에 싣는다.</summary>
+        /// <summary>화면(HUD)에서 누른 왕 희망·투표·카드를 다음 명령에 싣는다.</summary>
         public void RequestPick(PlayerClass c) { if (HumanIndex >= 0) _pendingPick[HumanIndex] = (sbyte)c; }
         public void RequestVote(int slot) { if (HumanIndex >= 0) _pendingVote[HumanIndex] = slot < 0 ? VoteCancel : (sbyte)slot; }
+        public void RequestCard(int handSlot) { if (HumanIndex >= 0 && handSlot >= 0 && handSlot < WizardRules.HandSize) _pendingCard[HumanIndex] = (sbyte)handSlot; }
 
         public void ShowMessage(string msg)
         {

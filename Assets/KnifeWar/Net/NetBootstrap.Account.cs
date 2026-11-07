@@ -14,7 +14,29 @@ namespace KnifeWar.Net
     {
         enum AccountMode { Login, Register, ResetRequest, Reset }
 
-        ProfileDto _profile;
+        ProfileDto _profileValue;
+        /// <summary>내 계정 정보. 받을 때마다 서버에 저장된 덱을 기기 덱에 맞춘다.</summary>
+        ProfileDto _profile
+        {
+            get => _profileValue;
+            set
+            {
+                _profileValue = value;
+                if (value != null && !string.IsNullOrEmpty(value.deck)) DeckStore.SetFromServer(value.deck);
+            }
+        }
+
+        /// <summary>덱 저장 (기기 + 계정 서버). 로그인 안 했으면 기기에만.</summary>
+        void SaveDeck(byte[] deck, Action<bool> done = null)
+        {
+            if (!DeckStore.Set(deck)) { done?.Invoke(false); return; }
+            if (_api == null || _profile == null) { done?.Invoke(true); return; }
+            StartCoroutine(_api.Post("/account/deck", $"{{\"deck\":\"{DeckStore.Text}\"}}", (code, text) =>
+            {
+                if (code == 200 && _profileValue != null) _profileValue.deck = DeckStore.Text;
+                done?.Invoke(code == 200);
+            }));
+        }
         AccountMode _accMode = AccountMode.Login;
         string _email = "", _password = "", _password2 = "", _regName = "", _code = "";
         bool _agreeTerms, _age14;
@@ -586,6 +608,7 @@ namespace KnifeWar.Net
         public string id; public string name; public string tag; public string displayId; public string email; public bool emailVerified;
         public string homeRegion; public int mmr; public int tier; public int wins; public int losses; public int matches; public int kills; public int deaths;
         public bool termsOk = true;
+        public string deck;   // "0,0,2,1,3,7,9,6" (비어 있으면 기본 덱)
     }
     [Serializable] public sealed class BanInfo { public string error; public string reason; public long until; }
     [Serializable] public sealed class LeaderDto { public int rank; public string name; public string displayId; public int mmr; public int tier; public int wins; public int matches; }

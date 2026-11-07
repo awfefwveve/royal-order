@@ -263,23 +263,31 @@ namespace KnifeWar.Game
             Label(new Rect(30, h - 68, 200, 30), me.Alive ? L.T("hp", hp) : L.T("dead_spectate"), _mid, Color.white);
 
             // 직업별
-            if (me.Class == PlayerClass.King)
-            {
-                float mana = _m.Wizard.Mana(me.Index);
-                Rect(w - 360, h - 110, 340, 90, new Color(0, 0, 0, 0.5f));
-                Rect(w - 350, h - 38, 320 * mana / WizardRules.MaxMana, 10, new Color(0.45f, 0.6f, 1f));
-                Label(new Rect(w - 350, h - 108, 320, 26), L.T("mana", mana.ToString("0")), _mid, Color.white);
-                Label(new Rect(w - 350, h - 80, 330, 40),
-                    L.T("wizard_keys", WizardRules.CostOf(0), WizardRules.CostOf(1), WizardRules.CostOf(2), MatchController.BuffCost),
-                    _small, Color.white);
-            }
-            else
-            {
-                Label(new Rect(w - 300, h - 50, 280, 30), L.T("knight_keys"), _small, new Color(1, 1, 1, 0.8f));
-            }
+            if (me.Class == PlayerClass.King) DrawHand(me, w, h);
+            else Label(new Rect(w - 300, h - 50, 280, 30), L.T("knight_keys"), _small, new Color(1, 1, 1, 0.8f));
 
+            // 팀 상태 (버프·필드·건물)
+            float sy = h - 100;
             if (_m.Wizard.TeamBuffs[me.Team].IsActive(_m.ServerTick))
-                Label(new Rect(20, h - 100, 300, 26), L.T("buff_active"), _small, new Color(0.6f, 0.8f, 1f));
+            {
+                Label(new Rect(20, sy, 360, 26), L.T("buff_active"), _small, new Color(0.6f, 0.8f, 1f));
+                sy -= 24;
+            }
+            var fld = _m.Wizard.TeamField[me.Team];
+            if (fld.IsActive(_m.ServerTick) && fld.BuffId == FieldType.Volcano)
+            {
+                Label(new Rect(20, sy, 420, 26), L.T("field_volcano", Mathf.Max(0, (fld.EndTick - _m.ServerTick) / MatchController.TickRate)), _small, new Color(1f, 0.6f, 0.3f));
+                sy -= 24;
+            }
+            var efld = _m.Wizard.TeamField[1 - me.Team];
+            if (efld.IsActive(_m.ServerTick) && efld.BuffId == FieldType.Volcano)
+            {
+                Label(new Rect(20, sy, 420, 26), L.T("field_volcano_enemy"), _small, new Color(1f, 0.45f, 0.35f));
+                sy -= 24;
+            }
+            var bld = _m.Wizard.Buildings[me.Team];
+            if (bld.Count(BuildingType.Barracks) + bld.Count(BuildingType.ManaWell) > 0)
+                Label(new Rect(20, sy, 360, 26), L.T("buildings_n", bld.Count(BuildingType.Barracks), bld.Count(BuildingType.ManaWell)), _small, new Color(0.9f, 0.85f, 0.6f));
 
             // 조준점 + 히트마커
             if (me.Alive)
@@ -296,6 +304,39 @@ namespace KnifeWar.Game
                     Label(new Rect(cx - 20, cy - 20, 40, 40), "X", _big, c);
                 }
             }
+        }
+
+        /// <summary>왕의 손패 4장 + 다음 카드 + 마나. 1~4 키 또는 (커서가 풀렸을 때) 클릭으로 사용.</summary>
+        void DrawHand(PlayerAvatar me, float w, float h)
+        {
+            float mana = _m.Wizard.Mana(me.Index);
+            float cw = CardUi.W, ch = CardUi.H, gap = 10f;
+            float totalW = WizardRules.HandSize * cw + (WizardRules.HandSize - 1) * gap;
+            float x0 = w * 0.5f - totalW * 0.5f + 60f, y0 = h - ch - 56f;
+
+            // 바탕 + 마나 막대
+            Rect(x0 - 90, y0 - 36, totalW + 110, ch + 84, new Color(0, 0, 0, 0.45f));
+            Label(new Rect(x0, y0 - 34, 200, 26), L.T("mana", mana.ToString("0")), _mid, Color.white);
+            Rect(x0, y0 - 8, totalW, 6, new Color(1, 1, 1, 0.15f));
+            Rect(x0, y0 - 8, totalW * Mathf.Clamp01(mana / WizardRules.MaxMana), 6, new Color(0.45f, 0.6f, 1f));
+            Label(new Rect(x0 + 200, y0 - 34, totalW - 200, 26), L.T("card_keys"), _small, new Color(1, 1, 1, 0.7f));
+
+            // 다음 카드 (작게)
+            float nw = cw * 0.55f, nh = ch * 0.55f;
+            Label(new Rect(x0 - 86, y0 + ch - nh - 24, nw, 20), L.T("card_next"), _small, new Color(1, 1, 1, 0.7f));
+            CardUi.Draw(new Rect(x0 - 86, y0 + ch - nh, nw, nh), _m.Wizard.NextCard(me.Index), true, null, false, 0.8f);
+
+            // 손패
+            for (int slot = 0; slot < WizardRules.HandSize; slot++)
+            {
+                int id = _m.Wizard.Hand(me.Index, slot);
+                bool ok = me.Alive && _m.Wizard.CanAfford(me.Index, id);
+                var r = new Rect(x0 + slot * (cw + gap), y0, cw, ch);
+                if (ok) r.y -= 6f;   // 쓸 수 있는 카드는 살짝 올라온다
+                if (CardUi.Draw(r, id, ok, (slot + 1).ToString()) && ok) _m.RequestCard(slot);
+            }
+
+            // 마나 부족 등 안내는 공용 메시지 줄(LastSummonMessage)로
         }
 
         void DrawKillFeed(float w)

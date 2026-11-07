@@ -74,6 +74,9 @@ namespace KnifeWar.Core
         public NativeArray<int> TargetPlayer;   // 몬스터별 공격 중인 플레이어, 없으면 -1
         public int PlayerCount;
 
+        /// <summary>팀별 화염 필드(볼케이노) 활성 여부. 화염 속성 몬스터의 속도·소환 체력이 오른다. 매 틱 바깥에서 넣는다.</summary>
+        public NativeArray<byte> TeamFire;
+
         // ---- 공간 분할 (팀별) ----
         public NativeArray<int> CellStart;  // [team * (CellCount + 1) + cell]
         public NativeArray<int> CellItems;  // [team * Capacity + i]
@@ -121,6 +124,7 @@ namespace KnifeWar.Core
             PlayerKing = new NativeArray<byte>(MaxSimPlayers, p);
             PlayerDamage = new NativeArray<int>(MaxSimPlayers, p);
             TargetPlayer = new NativeArray<int>(capacity, p);
+            TeamFire = new NativeArray<byte>(2, p);
 
             int stride = lane.CellCount + 1;
             CellStart = new NativeArray<int>(2 * stride, p);
@@ -153,10 +157,13 @@ namespace KnifeWar.Core
             if (index >= PlayerCount) PlayerCount = index + 1;
         }
 
-        /// <summary>자기 진영 끝에서 몬스터 소환. 슬롯이 없으면 false.</summary>
-        public bool TrySpawn(byte team, byte type)
+        /// <summary>자기 성 1층 출구에서 몬스터 소환. 슬롯이 없으면 false.</summary>
+        public bool TrySpawn(byte team, byte type) => TrySpawn(team, type, out _);
+
+        public bool TrySpawn(byte team, byte type, out int slot)
         {
             Complete();
+            slot = -1;
             if (_free.Length == 0) return false;
 
             int s = _free[_free.Length - 1];
@@ -171,9 +178,9 @@ namespace KnifeWar.Core
             State[s] = (byte)MonsterState.Move;
             StateChanged[s] = 0;
             Leak[s] = 0;
-            Pos[s] = team == 0 ? 0 : Lane.LengthMm;
+            Pos[s] = Lane.SpawnPos(team);
             Lat[s] = (short)((int)(h % (uint)width) - Lane.HalfWidthMm);
-            Hp[s] = Defs[type].MaxHp;
+            Hp[s] = SpawnHp(Defs[type], TeamFire[team] != 0);
             Cooldown[s] = 0;
             Target[s] = -1;
             TargetPlayer[s] = -1;
@@ -181,8 +188,17 @@ namespace KnifeWar.Core
 
             _aliveTeam[team]++;
             Counters[SimCounter.SpawnEvents]++;
+            slot = s;
             return true;
         }
+
+        /// <summary>소환 체력: 화염 필드 중 화염 속성이면 +50%.</summary>
+        public static int SpawnHp(in MonsterDef def, bool fire)
+            => fire && def.Attr == (byte)MonsterAttr.Fire ? def.MaxHp * (100 + FieldType.FireHpPercent) / 100 : def.MaxHp;
+
+        /// <summary>이동 속도(mm/틱): 화염 필드 중 화염 속성이면 +25%.</summary>
+        public static int MoveSpeed(in MonsterDef def, bool fire)
+            => fire && def.Attr == (byte)MonsterAttr.Fire ? def.SpeedMmPerTick * (100 + FieldType.FireSpeedPercent) / 100 : def.SpeedMmPerTick;
 
         /// <summary>모든 몬스터 제거 (라운드 시작 시).</summary>
         public void Clear()
@@ -215,7 +231,7 @@ namespace KnifeWar.Core
             Pos[slot] = pos;
             Lat[slot] = lat;
             State[slot] = state;
-            Hp[slot] = Defs[type].MaxHp;
+            Hp[slot] = SpawnHp(Defs[type], TeamFire[team] != 0);
             _aliveTeam[team]++;
         }
 
@@ -253,7 +269,7 @@ namespace KnifeWar.Core
                 if (Alive[m] == 0 || State[m] != (byte)MonsterState.Move) continue;
                 Goal(Team[m], Lane, PlayerCount, PlayerPos, PlayerLat, PlayerTeam, PlayerAlive, PlayerKing, out int goal, out int goalLat, out bool king);
                 int pos = Pos[m], lat = Lat[m];
-                Advance(ref pos, ref lat, goal, goalLat, king, Defs[Type[m]].SpeedMmPerTick, Lane);
+                Advance(ref pos, ref lat, goal, goalLat, king, MoveSpeed(Defs[Type[m]], TeamFire[Team[m]] != 0), Lane);
                 Pos[m] = pos;
                 Lat[m] = (short)lat;
             }
@@ -366,6 +382,7 @@ namespace KnifeWar.Core
                 PlayerTeam = PlayerTeam,
                 PlayerAlive = PlayerAlive,
                 PlayerKing = PlayerKing,
+                TeamFire = TeamFire,
             }.Schedule(Capacity, 256, acquire);
 
             var damage = new DamageJob
@@ -467,6 +484,7 @@ namespace KnifeWar.Core
             if (PlayerKing.IsCreated) PlayerKing.Dispose();
             if (PlayerDamage.IsCreated) PlayerDamage.Dispose();
             if (TargetPlayer.IsCreated) TargetPlayer.Dispose();
+            if (TeamFire.IsCreated) TeamFire.Dispose();
             if (CellStart.IsCreated) CellStart.Dispose();
             if (_cellCursor.IsCreated) _cellCursor.Dispose();
             if (CellItems.IsCreated) CellItems.Dispose();
@@ -665,6 +683,7 @@ namespace KnifeWar.Core
         [ReadOnly] public NativeArray<byte> PlayerTeam;
         [ReadOnly] public NativeArray<byte> PlayerAlive;
         [ReadOnly] public NativeArray<byte> PlayerKing;
+        [ReadOnly] public NativeArray<byte> TeamFire;
 
         public void Execute(int m)
         {
@@ -680,7 +699,7 @@ namespace KnifeWar.Core
             Cooldown[m] = 0;
             MonsterSim.Goal(Team[m], Lane, PlayerCount, PlayerPos, PlayerLat, PlayerTeam, PlayerAlive, PlayerKing, out int goal, out int goalLat, out bool king);
             int pos = Pos[m], lat = Lat[m];
-            MonsterSim.Advance(ref pos, ref lat, goal, goalLat, king, Defs[Type[m]].SpeedMmPerTick, Lane);
+            MonsterSim.Advance(ref pos, ref lat, goal, goalLat, king, MonsterSim.MoveSpeed(Defs[Type[m]], TeamFire[Team[m]] != 0), Lane);
             Pos[m] = pos;
             Lat[m] = (short)lat;
         }

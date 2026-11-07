@@ -103,6 +103,7 @@ object Profile(Account a)
         kills = st?.Kills ?? 0, deaths = st?.Deaths ?? 0,
         a.Stats,
         termsOk = TermsOk(a),
+        deck = a.Extra.Deck ?? "",
     };
 }
 
@@ -462,6 +463,18 @@ http.Map("POST", "/account/name", r =>
             store.SaveAccount(a);
         }
     }
+    return Ok(Profile(a));
+});
+
+// 왕 카드 덱 저장 (로비 덱 편집). 규칙에 안 맞으면 400.
+http.Map("POST", "/account/deck", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    var req = r.Json<DeckReq>();
+    string deck = req?.Deck ?? "";
+    if (!DeckRules.IsValid(deck)) return Status(400, new { error = "bad_deck" });
+    lock (accountLock) { a.Extra.Deck = DeckRules.Normalize(deck); store.SaveAccount(a); }
     return Ok(Profile(a));
 });
 
@@ -1075,6 +1088,7 @@ public sealed record CodeReq(string Code);
 public sealed record ResetRequestReq(string Email);
 public sealed record ResetReq(string Email, string Code, string Password);
 public sealed record NameReq(string Name);
+public sealed record DeckReq(string Deck);
 public sealed record ReportReq(string MatchId, string AccountId, string Reason, string Note);
 public sealed record BanReq(string AccountId, int Hours, string Reason);
 public sealed record IdReq(string Id);

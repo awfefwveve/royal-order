@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using KnifeWar.Core;
 using KnifeWar.Game;
 using UnityEngine;
 
@@ -14,7 +15,7 @@ namespace KnifeWar.Net
     /// </summary>
     public sealed partial class NetBootstrap
     {
-        enum Scr { Splash, Title, Login, Lobby, Play, Result }
+        enum Scr { Splash, Title, Login, Lobby, Play, Result, Deck }
 
         Scr _scr = Scr.Splash;
         float _scrAt;
@@ -67,6 +68,7 @@ namespace KnifeWar.Net
                 case Scr.Lobby: DrawLobby(w, h); break;
                 case Scr.Play: DrawPlay(w, h); break;
                 case Scr.Result: DrawResult(w, h); break;
+                case Scr.Deck: DrawDeck(w, h); break;
             }
         }
 
@@ -290,7 +292,7 @@ namespace KnifeWar.Net
 
         // ------------------------------------------------------------------ 4. 로비
 
-        static readonly string[] LobbyItems = { "fe_play", "fe_practice", "menu_recent", "menu_board", "settings", "fe_quit" };
+        static readonly string[] LobbyItems = { "fe_play", "fe_practice", "deck_open", "menu_recent", "menu_board", "settings", "fe_quit" };
 
         void DrawLobby(float w, float h)
         {
@@ -311,7 +313,7 @@ namespace KnifeWar.Net
 
             float x = Mathf.Max(32f, w * 0.05f), y = TopH + Mathf.Max(40f, h * 0.12f);
             float accentW = 6f;
-            FE.Fill(new Rect(x - 18, y - 6, accentW, 6 * 56 + 40), new Color(FE.Gold.r, FE.Gold.g, FE.Gold.b, 0.6f));
+            FE.Fill(new Rect(x - 18, y - 6, accentW, 7 * 56 + 40), new Color(FE.Gold.r, FE.Gold.g, FE.Gold.b, 0.6f));
             for (int i = 0; i < LobbyItems.Length; i++)
             {
                 bool big = i == 0;
@@ -341,6 +343,7 @@ namespace KnifeWar.Net
             {
                 case "fe_play": Go(Scr.Play); break;
                 case "fe_practice": StartOffline(); break;
+                case "deck_open": OpenDeck(); break;
                 case "menu_recent": OpenSide(SidePanel.Matches); break;
                 case "menu_board": OpenSide(SidePanel.Leaderboard); break;
                 case "settings": _settingsOpen = true; break;
@@ -512,6 +515,84 @@ namespace KnifeWar.Net
         }
 
         // ------------------------------------------------------------------ 6. 매칭 후 로딩 (경기 화면이 뜰 때까지)
+
+        // ------------------------------------------------------------------ 5-1. 덱 편집
+
+        readonly System.Collections.Generic.List<byte> _deckEdit = new System.Collections.Generic.List<byte>();
+        string _deckMsg = "";
+        float _deckMsgAt;
+
+        void OpenDeck()
+        {
+            _deckEdit.Clear();
+            _deckEdit.AddRange(DeckStore.Current);
+            _deckMsg = "";
+            Go(Scr.Deck);
+        }
+
+        int DeckCopies(int id) { int n = 0; foreach (var c in _deckEdit) if (c == id) n++; return n; }
+
+        void DrawDeck(float w, float h)
+        {
+            FE.Cover(new Rect(0, 0, w, h), FE.KeyArt, FE.KeyArtAspect, 1f, 1.1f, new Color(0.2f, 0.22f, 0.3f));
+            FE.Fill(new Rect(0, 0, w, h), new Color(0.03f, 0.05f, 0.1f, 0.6f));
+            DrawTopBar(w);
+
+            float top = TopH + 20f, bottom = h - BottomH - 16f;
+            FE.Text(new Rect(32, top, 400, 36), L.T("deck_title"), 30, Color.white, TextAnchor.MiddleLeft, true);
+            FE.Text(new Rect(32, top + 38, w - 64, 44), L.T("deck_hint"), 14, FE.Sub);
+
+            // 카드 크기: 화면에 맞춰 (왼쪽 전체 카드 10장 = 5×2, 오른쪽 덱 8장 = 4×2)
+            float k = Mathf.Clamp(Mathf.Min((w * 0.48f - 40f) / (5f * CardUi.W + 4f * 10f), (bottom - top - 140f) / (2f * CardUi.H + 60f)), 0.5f, 1.1f);
+            float cw = CardUi.W * k, ch = CardUi.H * k, gap = 10f * k;
+
+            // 왼쪽: 전체 카드
+            float lx = 32f, ly = top + 96f;
+            FE.Text(new Rect(lx, ly - 26, 300, 24), L.T("card_kind_summon") + " · " + L.T("card_kind_field") + " · " + L.T("card_kind_building") + " · " + L.T("card_kind_buff"), 13, FE.Sub);
+            for (int id = 0; id < CardDefs.Count; id++)
+            {
+                int col = id % 5, row = id / 5;
+                var r = new Rect(lx + col * (cw + gap), ly + row * (ch + 26f * k), cw, ch);
+                int copies = DeckCopies(id);
+                bool canAdd = _deckEdit.Count < CardDefs.DeckSize && copies < CardDefs.MaxCopies;
+                if (CardUi.Draw(r, id, canAdd, null, copies > 0) && canAdd) _deckEdit.Add((byte)id);
+                FE.Text(new Rect(r.x, r.yMax + 2, cw, 20), copies > 0 ? $"{copies}/{CardDefs.MaxCopies}" : "", 12, FE.Gold, TextAnchor.MiddleCenter);
+            }
+
+            // 오른쪽: 내 덱 8칸
+            float rx = Mathf.Max(lx + 5f * (cw + gap) + 40f, w * 0.52f), ry = ly;
+            float rw = 4f * cw + 3f * gap;
+            FE.Fill(new Rect(rx - 16, ry - 44, rw + 32, 2f * ch + 26f * k + 70), FE.Panel);
+            FE.Text(new Rect(rx, ry - 40, rw, 30), L.T("deck_count", _deckEdit.Count, CardDefs.DeckSize), 20, _deckEdit.Count == CardDefs.DeckSize ? FE.Gold : Color.white, TextAnchor.MiddleLeft, true);
+            for (int i = 0; i < CardDefs.DeckSize; i++)
+            {
+                int col = i % 4, row = i / 4;
+                var r = new Rect(rx + col * (cw + gap), ry + row * (ch + 26f * k), cw, ch);
+                if (i < _deckEdit.Count)
+                {
+                    if (CardUi.Draw(r, _deckEdit[i], true, null)) { _deckEdit.RemoveAt(i); break; }
+                }
+                else
+                {
+                    FE.Fill(r, new Color(1, 1, 1, 0.06f));
+                    FE.Border(r, FE.Line);
+                    FE.Text(r, (i + 1).ToString(), 22, FE.Sub, TextAnchor.MiddleCenter);
+                }
+            }
+
+            // 저장 / 기본 덱
+            float by = ry + 2f * ch + 26f * k + 8f;
+            bool full = _deckEdit.Count == CardDefs.DeckSize;
+            if (FE.Button(new Rect(rx, by, 150, 40), L.T("deck_save"), full ? FE.Kind.Line : FE.Kind.Ghost, 16))
+            {
+                if (!full) { _deckMsg = L.T("deck_need_full"); _deckMsgAt = FE.Now; }
+                else SaveDeck(_deckEdit.ToArray(), ok => { _deckMsg = ok ? L.T("deck_saved") : L.T("deck_saved") + " (offline)"; _deckMsgAt = FE.Now; });
+            }
+            if (FE.Button(new Rect(rx + 160, by, 150, 40), L.T("deck_reset"), FE.Kind.Ghost, 16)) { _deckEdit.Clear(); _deckEdit.AddRange(CardDefs.DefaultDeck); }
+            if (FE.Now - _deckMsgAt < 3f) FE.Text(new Rect(rx + 320, by, rw - 320, 40), _deckMsg, 15, FE.Gold);
+
+            DrawBottomBar(w, h, true);
+        }
 
         void DrawMatchLoading(float w, float h)
         {

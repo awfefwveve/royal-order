@@ -139,6 +139,13 @@ namespace KnifeWar.Game
             Play(_summon, player, 0.45f);
         }
 
+        /// <summary>필드 효과 시작 (볼케이노 등): 낮게 울리는 소리. 배경 연출은 FieldEffects 가 상태를 보고 한다.</summary>
+        public void OnField(int team, int fieldId)
+        {
+            _ui?.PlayOneShot(_summon, 0.9f);
+            _ui?.PlayOneShot(_go, 0.5f);
+        }
+
         public void OnPhase(RoundPhase phase, int winner, byte myTeam)
         {
             switch (phase)

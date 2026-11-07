@@ -31,7 +31,7 @@ namespace KnifeWar.Net
 
     public static class NetProtocol
     {
-        public const ushort Version = 6;   // 6: 왕 투표 (명령 Vote, 상태 Vote)
+        public const ushort Version = 7;   // 7: 왕 카드 (입장 때 덱, 스냅샷에 손패·필드·건물), 몬스터 7종
         public const ushort DefaultPort = 7777;
         public const int MaxCommandsPerPacket = 4;
         public const int CorrectionsPerSnapshot = 16;
@@ -153,7 +153,10 @@ namespace KnifeWar.Net
                     w.Byte((byte)e.A); w.Byte((byte)e.B);
                     break;
                 case GameEventType.Summon:
-                    w.Byte((byte)e.A);
+                    w.Byte((byte)e.A); w.Byte((byte)e.B);
+                    break;
+                case GameEventType.Field:
+                    w.Byte((byte)e.A); w.SByte((sbyte)e.B); w.Int(e.D);
                     break;
                 case GameEventType.Message:
                     w.Byte((byte)e.A); w.Byte((byte)e.B);
@@ -191,7 +194,10 @@ namespace KnifeWar.Net
                     e.A = r.Byte(); e.B = r.Byte();
                     break;
                 case GameEventType.Summon:
-                    e.A = r.Byte();
+                    e.A = r.Byte(); e.B = r.Byte();
+                    break;
+                case GameEventType.Field:
+                    e.A = r.Byte(); e.B = r.SByte(); e.D = r.Int();
                     break;
                 case GameEventType.Message:
                     e.A = r.Byte(); e.B = r.Byte();

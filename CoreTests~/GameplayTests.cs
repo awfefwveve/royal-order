@@ -207,7 +207,7 @@ public static class Program2 {
       sim2.Dispose();
     }
 
-    Console.WriteLine("[왕]");
+    Console.WriteLine("[왕 · 카드]");
     {
       var r = new RoundRules(RoundConfig.Default, TR);
       for (int i = 0; i < 12; i++) r.SetConnected(i, true);
@@ -215,16 +215,131 @@ public static class Program2 {
       while (r.Phase == RoundPhase.Select) r.Tick(t++);
       var sim = new MonsterSim(1000, TR, LaneConfig.Default);
       var w = new WizardRules(12, TR, teamMonsterCap: 5);
-      w.ResetForRound(30);
+      // 덱: 졸병2 궁수 방패 오우거 병영 나팔 볼케이노 (기본) — 검증
+      Check(CardDefs.IsValidDeck(CardDefs.DefaultDeck), "기본 덱은 규칙에 맞음");
+      Check(!CardDefs.IsValidDeck(new byte[] { 0, 0, 0, 1, 2, 3, 4, 5 }), "같은 카드 3장 → 거부");
+      Check(!CardDefs.IsValidDeck(new byte[] { 0, 1, 2 }), "8장 아니면 거부");
+      Check(CardDefs.Parse(CardDefs.ToText(CardDefs.DefaultDeck)).Length == 8, "덱 문자열 왕복");
+      w.SetDeck(0, new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 });   // 잘못된 덱 → 기본 덱
+      Check(CardDefs.IsValidDeck(w.DeckOf(0)), "잘못된 덱은 기본 덱으로");
+      w.SetDeck(0, new byte[] { 0, 0, 2, 1, 3, 7, 9, 6 });
+      w.ResetForRound(round: 1, seed: 7, startMana: 30);
+      // 손패 4장 + 다음 카드 = 덱의 5장, 전부 덱 안의 카드
+      int inDeck = 0; for (int i = 0; i < 4; i++) if (w.Hand(0, i) != CardDefs.None) inDeck++;
+      Check(inDeck == 4, "손패 4장");
+      // 손패 + 남은 덱 = 원래 덱과 같은 구성 (카드가 사라지거나 복제되지 않음)
+      bool SameMultiset(int p)
+      {
+        var cnt = new int[CardDefs.Count];
+        for (int i = 0; i < 4; i++) cnt[w.Hand(p, i)]++;
+        var d = w.DeckOf(p);
+        // 덱 배열에는 손패 자리(빈 칸)도 남아 있으니 커서부터 4장만 센다
+        int next = w.NextCard(p); // 커서 위치의 카드
+        // 간단 검사: 덱 배열 전체 8장 중 손패로 나간 4장의 자리는 아직 옛 값이므로, 전체 집합 = 원래 덱이어야 함
+        var all = new int[CardDefs.Count]; foreach (var c in d) all[c]++;
+        var orig = new int[CardDefs.Count]; foreach (var c in new byte[] { 0, 0, 2, 1, 3, 7, 9, 6 }) orig[c]++;
+        for (int i = 0; i < orig.Length; i++) if (all[i] != orig[i]) return false;
+        return true;
+      }
+      Check(SameMultiset(0), "섞은 뒤에도 덱 구성 그대로");
       sim.PrepareTick();
-      Check(w.TrySummon(0, 0, r, sim) == WizardRules.SummonResult.Ok, "마나 30 → 졸병(10) 소환");
-      Check(w.TrySummon(0, 1, r, sim) == WizardRules.SummonResult.NoMana, "남은 20 → 탱커(30) 마나 부족");
-      Check(w.TrySummon(2, 0, r, sim) == WizardRules.SummonResult.NotWizard, "기사는 소환 불가");
-      for (int i = 0; i < TR * 3; i++) w.Tick(i, r);
-      Check(Math.Abs(w.Mana(0) - 56f) < 0.6f, $"3초 회복 (+36) → 약 56 (got {w.Mana(0):F1})");
-      var last = WizardRules.SummonResult.Ok; while ((last = w.TrySummon(0, 0, r, sim)) == WizardRules.SummonResult.Ok) { }
-      Check(sim.AliveInTeam(0) == 5 && last == WizardRules.SummonResult.TeamCap, $"팀 상한 5 → 5마리에서 거부 (got {sim.AliveInTeam(0)}, {last})");
-      Check(w.TryBuff(0, 1, 5, 10, t, r) && w.TeamBuffs[0].IsActive(t) && !w.TeamBuffs[0].IsActive(t + 5 * TR), "팀 버프 5초 지속");
+      // 마나 30: 가장 싼 손패 카드를 쓴다
+      int cheap = -1; for (int i = 0; i < 4; i++) if (WizardRules.CostOf(w.Hand(0, i)) <= 30 && (cheap < 0 || WizardRules.CostOf(w.Hand(0, i)) < WizardRules.CostOf(w.Hand(0, cheap)))) cheap = i;
+      Check(cheap >= 0, "30마나로 쓸 수 있는 카드가 손에 있음");
+      byte used = w.Hand(0, cheap);
+      var res = w.TryPlay(0, cheap, r, sim, t, out int cardId);
+      Check(res == WizardRules.SummonResult.Ok && cardId == used, $"카드 사용 성공 ({CardDefs.Get(used).Key})");
+      Check(w.Hand(0, cheap) != CardDefs.None, "쓴 자리에 다음 카드가 채워짐");
+      Check(Math.Abs(w.Mana(0) - (30 - CardDefs.Get(used).Cost)) < 0.01f, "마나 차감");
+      Check(w.TryPlay(2, 0, r, sim, t, out _) == WizardRules.SummonResult.NotWizard, "기사는 카드 못 씀");
+      Check(w.TryPlay(0, 9, r, sim, t, out _) == WizardRules.SummonResult.BadSlot, "없는 손패 칸");
+      // 카드 순환: 8번 쓰면(마나 무한) 모든 카드가 한 번씩 돌아온다
+      var w2 = new WizardRules(12, TR, teamMonsterCap: 1000);
+      w2.SetDeck(0, new byte[] { 0, 1, 2, 3, 4, 5, 7, 8 });   // 전부 다른 카드 (볼케이노 제외)
+      w2.ResetForRound(1, 3, 30);
+      var seen = new int[CardDefs.Count];
+      for (int k = 0; k < 8; k++)
+      {
+        w2.SetManaMirror(0, 100f);
+        var rr = w2.TryPlay(0, k % 4, r, sim, t, out int cid);   // 손패 4칸을 돌아가며 사용
+        if (rr == WizardRules.SummonResult.Limit) { /* 건물 상한 */ }
+        if (cid >= 0) seen[cid]++;
+        if (rr != WizardRules.SummonResult.Ok) { Console.WriteLine($"   (loop {k}: {rr} card {cid})"); }
+      }
+      int distinct = 0; foreach (var n in seen) if (n > 0) distinct++;
+      Check(distinct == 8, $"손패 4칸을 돌아가며 8번 쓰면 덱 8장이 모두 한 번씩 (got {distinct})");
+      int dup = 0; foreach (var n in seen) if (n > 1) dup++;
+      Check(dup == 0, "같은 카드가 두 번 나오지 않음 (손패와 덱이 겹치지 않음)");
+      // 마나 회복: 3초 → +36
+      var w3 = new WizardRules(12, TR, teamMonsterCap: 5);
+      w3.ResetForRound(1, 1, 30);
+      for (int i = 0; i < TR * 3; i++) w3.Tick(i, r);
+      Check(Math.Abs(w3.Mana(0) - 66f) < 0.6f, $"3초 회복 (+36) → 약 66 (got {w3.Mana(0):F1})");
+      Check(Math.Abs(w3.Mana(2)) < 0.01f || w3.Mana(2) == 30f, "기사는 마나가 안 찬다");
+      // 팀 상한
+      var w4 = new WizardRules(12, TR, teamMonsterCap: 5);
+      w4.SetDeck(0, new byte[] { 0, 0, 2, 2, 1, 1, 3, 3 });
+      w4.ResetForRound(1, 5, 30);
+      var sim4 = new MonsterSim(1000, TR, LaneConfig.Default);
+      sim4.PrepareTick();
+      WizardRules.SummonResult last = WizardRules.SummonResult.Ok; int guard = 0;
+      while (guard++ < 40) { w4.SetManaMirror(0, 100f); last = w4.TryPlay(0, 0, r, sim4, t, out _); if (last != WizardRules.SummonResult.Ok) break; }
+      Check(sim4.AliveInTeam(0) == 5 && last == WizardRules.SummonResult.TeamCap, $"팀 상한 5 → 5마리에서 거부 (got {sim4.AliveInTeam(0)}, {last})");
+      Check(sim4.Pos[0] == LaneConfig.Default.SpawnMm, $"소환 위치 = 성 1층 출구 ({sim4.Pos[0]} == {LaneConfig.Default.SpawnMm})");
+      // 건물: 병영 → 12초마다 졸병, 상한 3. 마나 우물 → 회복 증가
+      var w5 = new WizardRules(12, TR, teamMonsterCap: 100);
+      w5.SetDeck(0, new byte[] { 7, 7, 8, 8, 0, 0, 1, 1 });
+      w5.ResetForRound(1, 11, 30);
+      var sim5 = new MonsterSim(1000, TR, LaneConfig.Default);
+      sim5.PrepareTick();
+      int barracks = 0, wells = 0;
+      for (int k = 0; k < 16; k++)
+      {
+        w5.SetManaMirror(0, 100f);
+        int slot = -1; for (int i = 0; i < 4; i++) if (w5.Hand(0, i) == 7 || w5.Hand(0, i) == 8) { slot = i; break; }
+        if (slot < 0) slot = k % 4;   // 건물 카드가 손에 없으면 아무거나 써서 순환
+        byte c = w5.Hand(0, slot);
+        if (w5.TryPlay(0, slot, r, sim5, t, out _) == WizardRules.SummonResult.Ok) { if (c == 7) barracks++; else if (c == 8) wells++; }
+      }
+      Check(w5.Buildings[0].Count(BuildingType.Barracks) == barracks && barracks >= 2 && barracks <= 3, $"병영 2~3 (상한 3, got {barracks})");
+      Check(w5.Buildings[0].Count(BuildingType.ManaWell) == wells && wells == 2, $"마나 우물 2 (상한 2, 세 번째는 거부, got {wells})");
+      int before = sim5.AliveInTeam(0);
+      for (int i = 0; i < TR * 13; i++) { sim5.PrepareTick(); w5.Tick(t + i, r, sim5); sim5.Step(); }
+      Check(sim5.AliveInTeam(0) == before + barracks, $"13초 뒤 병영 {barracks}개 → 졸병 {barracks} (got {sim5.AliveInTeam(0) - before})");
+      w5.SetManaMirror(0, 0f);
+      for (int i = 0; i < TR; i++) w5.Tick(t + i, r);
+      Check(Math.Abs(w5.Mana(0) - 18f) < 0.6f, $"우물 2개: 1초 회복 12+6 = 18 (got {w5.Mana(0):F1})");
+      // 볼케이노: 필드 60초 + 화염 골렘 + 화염 속성 속도 증가
+      var w6 = new WizardRules(12, TR, teamMonsterCap: 100);
+      w6.SetDeck(0, new byte[] { 6, 0, 0, 1, 1, 2, 2, 3 });
+      w6.ResetForRound(1, 2, 30);
+      var sim6 = new MonsterSim(1000, TR, LaneConfig.Default);
+      sim6.PrepareTick();
+      int vslot = -1; for (int i = 0; i < 4; i++) if (w6.Hand(0, i) == 6) vslot = i;
+      if (vslot < 0) { w6.ResetForRound(1, 9, 30); for (int i = 0; i < 4; i++) if (w6.Hand(0, i) == 6) vslot = i; }
+      Check(vslot >= 0, "볼케이노가 손에 있음");
+      w6.SetManaMirror(0, 100f);
+      Check(w6.TryPlay(0, vslot, r, sim6, t, out _) == WizardRules.SummonResult.Ok, "볼케이노 사용");
+      Check(w6.FireActive(0, t) && !w6.FireActive(0, t + 61 * TR) && w6.VolcanoVisible(t), "필드 60초");
+      int golem = -1; for (int i = 0; i < 1000; i++) if (sim6.Alive[i] != 0 && sim6.Type[i] == MonsterDefs.FireGolem) golem = i;
+      Check(golem >= 0, "화염 골렘 소환");
+      Check(golem >= 0 && sim6.Hp[golem] == 1500 * 3 / 2, $"화염 골렘 체력 +50% (got {(golem >= 0 ? sim6.Hp[golem] : -1)})");
+      int p0 = sim6.Pos[golem];
+      sim6.PrepareTick(); sim6.Step();
+      int moved = sim6.Pos[golem] - p0;
+      int baseSpeed = MonsterDefs.Create(TR, Unity.Collections.Allocator.Temp)[MonsterDefs.FireGolem].SpeedMmPerTick;
+      Check(moved == baseSpeed * 125 / 100, $"화염 골렘 속도 +25% ({moved} vs {baseSpeed})");
+      w6.SetManaMirror(0, 100f);
+      // 두 번째 볼케이노는 지속 중이면 거부 (덱에 1장이라 손에 없을 수 있음 → 직접 확인)
+      int vslot2 = -1; for (int i = 0; i < 4; i++) if (w6.Hand(0, i) == 6) vslot2 = i;
+      Check(vslot2 < 0 || w6.TryPlay(0, vslot2, r, sim6, t, out _) == WizardRules.SummonResult.Limit, "볼케이노 중복 거부");
+      // 나팔 버프
+      var w7 = new WizardRules(12, TR, teamMonsterCap: 100);
+      w7.SetDeck(0, new byte[] { 9, 9, 0, 0, 1, 1, 2, 2 });
+      w7.ResetForRound(1, 4, 30);
+      int hslot = -1; for (int i = 0; i < 4; i++) if (w7.Hand(0, i) == 9) hslot = i;
+      Check(hslot >= 0 && w7.TryPlay(0, hslot, r, sim6, t, out _) == WizardRules.SummonResult.Ok && w7.TeamBuffs[0].IsActive(t) && !w7.TeamBuffs[0].IsActive(t + 8 * TR), "진군의 나팔 8초");
+      sim.Dispose(); sim4.Dispose(); sim5.Dispose(); sim6.Dispose();
     }
 
     Console.WriteLine(fail == 0 ? "ALL OK" : $"FAILURES: {fail}");

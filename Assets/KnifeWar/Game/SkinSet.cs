@@ -38,8 +38,8 @@ namespace KnifeWar.Game
         public GameObject KnifeInHand;
 
         [Header("몬스터 (GPU 인스턴싱으로 수백 마리를 그림 — 뼈 애니메이션 없는 메시만, 발이 원점)")]
-        [Tooltip("0 졸병, 1 탱커, 2 원거리")] public Mesh[] MonsterMesh = new Mesh[3];
-        [Tooltip("종류별 크기 배율")] public float[] MonsterScale = { 1f, 1f, 1f };
+        [Tooltip("0 졸병, 1 방패병, 2 궁수, 3 오우거, 4 트윈헤드 오우거, 5 데스나이트, 6 화염 골렘")] public Mesh[] MonsterMesh = new Mesh[7];
+        [Tooltip("종류별 크기 배율")] public float[] MonsterScale = { 1f, 1f, 1f, 1f, 1f, 1f, 1f };
         public Material MonsterTeam0;
         public Material MonsterTeam1;
 

@@ -137,6 +137,7 @@ namespace KnifeWar.Net
                         _w.UShort(NetProtocol.Version);
                         _w.Float(_simLatencyMs);
                         _w.Str(_joinToken);
+                        _w.Str(DeckStore.Text);   // 내 덱 (서버가 검증)
                         _net.Send(_conn, true, _w, _simLatencyMs);
                         break;
                     case NetworkEvent.Type.Data:
@@ -294,9 +295,11 @@ namespace KnifeWar.Net
             int phaseEnd = r.Int();
             int s0 = r.Byte(), s1 = r.Byte();
             int lastWinner = r.SByte(), matchWinner = r.SByte();
-            int buff0 = r.Int(), buff1 = r.Int();
+            var team0 = ReadTeamKing(r);
+            var team1 = ReadTeamKing(r);
             var vel = new Vector3(r.Float(), r.Float(), r.Float());
             float mana = r.Float();
+            var hand = new MatchController.HandState { C0 = r.Byte(), C1 = r.Byte(), C2 = r.Byte(), C3 = r.Byte(), Next = r.Byte() };
             _frame.Tick = tick;
             for (int p = 0; p < MatchController.MaxPlayers; p++) _frame.Players[p] = NetProtocol.ReadPlayer(r);
 
@@ -307,7 +310,7 @@ namespace KnifeWar.Net
                 NetInfo.PingMs = _pingSmoothed;
             }
 
-            _m.ClientReceiveSnapshot(_frame, ack, vel, mana, phase, round, phaseEnd, s0, s1, lastWinner, matchWinner, buff0, buff1);
+            _m.ClientReceiveSnapshot(_frame, ack, vel, mana, hand, phase, round, phaseEnd, s0, s1, lastWinner, matchWinner, team0, team1);
 
             int corr = r.Byte();
             for (int k = 0; k < corr; k++)
@@ -318,6 +321,11 @@ namespace KnifeWar.Net
                 _m.Monsters.PuppetCorrect(slot, pos, state);
             }
         }
+
+        static MatchController.TeamKingState ReadTeamKing(ByteReader r) => new MatchController.TeamKingState
+        {
+            BuffEnd = r.Int(), FieldId = r.SByte(), FieldEnd = r.Int(), Barracks = r.Byte(), Wells = r.Byte(),
+        };
 
         /// <summary>매 틱 예측이 끝난 입력을 서버로 보낸다 (손실 대비 최근 4개를 같이).</summary>
         void OnCommand(NetCommand cmd)
