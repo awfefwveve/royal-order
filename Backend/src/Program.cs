@@ -913,8 +913,8 @@ object RoomView(RoomService.Room room, Account me)
         isHost = room.HostId == me.Id,
         started = match,
         seats = room.Seats.Select((s, i) => s == null
-            ? new { slot = i, id = "", name = "", host = false, me = false }
-            : new { slot = i, id = s.AccountId, name = s.Name, host = s.AccountId == room.HostId, me = s.AccountId == me.Id }),
+            ? new { slot = i, id = "", name = "", host = false, me = false, bot = false }
+            : new { slot = i, id = s.AccountId, name = s.Name, host = !s.IsBot && s.AccountId == room.HostId, me = !s.IsBot && s.AccountId == me.Id, bot = s.IsBot }),
     };
 }
 
@@ -971,6 +971,16 @@ http.Map("POST", "/room/leave", r =>
     if (a == null) return Status(401);
     rooms.Leave(a.Id);
     return Ok(new { inRoom = false });
+});
+
+// 방장: 빈 칸에 봇 넣기 / 봇 빼기 (빈자리는 자동으로 채우지 않는다)
+http.Map("POST", "/room/bot", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    var req = r.Json<RoomBotReq>();
+    string error = rooms.SetBot(a.Id, req?.Slot ?? -1, req?.Add ?? true);
+    return error == null ? Ok(RoomView(rooms.Get(a.Id), a)) : Status(error == "host_only" ? 403 : 409, new { error });
 });
 
 http.Map("POST", "/room/start", r =>
@@ -1157,6 +1167,7 @@ public sealed record ResetRequestReq(string Email);
 public sealed record ResetReq(string Email, string Code, string Password);
 public sealed record NameReq(string Name);
 public sealed record DeckReq(string Deck);
+public sealed record RoomBotReq(int Slot, bool Add = true);
 public sealed record PasswordChangeReq(string Current, string Password);
 public sealed record DeleteReq(string Password = "", string Confirm = "");
 public sealed record ReportReq(string MatchId, string AccountId, string Reason, string Note);

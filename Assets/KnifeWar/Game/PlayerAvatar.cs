@@ -118,6 +118,17 @@ namespace KnifeWar.Game
             ApplyHeight();
         }
 
+        public bool Present { get; private set; } = true;
+
+        /// <summary>빈 칸: 통째로 숨긴다 (모델·이름표·판정 전부). 다시 사람이 들어오면 true.</summary>
+        public void SetPresent(bool present)
+        {
+            if (Present == present) return;
+            Present = present;
+            if (Visual != null) Visual.gameObject.SetActive(present);
+            if (!present) { Alive = false; _cc.enabled = false; }
+        }
+
         public void SetAlive(bool alive)
         {
             Alive = alive;

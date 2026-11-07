@@ -130,7 +130,7 @@ namespace KnifeWar.Game
                 for (int p = 0; p < MatchController.MaxPlayers; p++)
                 {
                     var a = _m.Avatars[p];
-                    if (a.Team != team) continue;
+                    if (a.Team != team || !a.Present) continue;   // 빈 칸은 점수판에서 뺀다
                     var c = team == 0 ? Blue : Red;
                     if (!a.Alive) c *= 0.6f;
                     c.a = 1f;
@@ -194,7 +194,7 @@ namespace KnifeWar.Game
             }
 
             // ---- 왕 투표 ----
-            float pw = 680, ph = 470, x = w * 0.5f - pw * 0.5f, y = h * 0.14f;
+            float pw = 680, ph = 540, x = w * 0.5f - pw * 0.5f, y = h * 0.1f;
             Rect(x, y, pw, ph, new Color(0, 0, 0, 0.72f));
             Label(new Rect(x, y + 10, pw, 40), L.T("vote_title", r.SecondsLeft(_m.ServerTick)), _big, Color.white);
             Label(new Rect(x + 24, y + 54, pw - 48, 48), L.T(r.RoundNumber == 1 ? "vote_hint_first" : "vote_hint_again"), _small, new Color(1, 1, 1, 0.8f));

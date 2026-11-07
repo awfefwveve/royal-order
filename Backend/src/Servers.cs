@@ -28,6 +28,7 @@ public sealed class ServerRegistry
         public string MatchId { get; set; } = "";
         public string Region { get; set; } = "";
         public List<AssignedPlayer> Players { get; set; } = new();
+        public bool Custom { get; set; }   // 사용자 설정: 목록에 없는 칸은 비워 둔다 (봇으로 채우지 않음)
     }
 
     public sealed class AssignedPlayer
@@ -36,6 +37,7 @@ public sealed class ServerRegistry
         public string Name { get; set; } = "";
         public int Slot { get; set; }
         public int Team { get; set; }
+        public bool Bot { get; set; }   // 사용자 설정 방의 봇 자리
     }
 
     const int HeartbeatTimeoutSec = 15;

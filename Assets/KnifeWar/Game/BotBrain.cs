@@ -16,9 +16,6 @@ namespace KnifeWar.Game
         float _strafeTimer;
         float _nextSummon;
         int _target = -1;
-        int _voteRound = -1;      // 이번 준비 단계에서 희망·투표를 냈는지
-        float _voteAt;
-        bool _wished, _voted;
 
         public PlayerClass PreferredClass;
 
@@ -44,22 +41,7 @@ namespace KnifeWar.Game
 
             if (phase == RoundPhase.Select)
             {
-                // 투표 라운드: 왕을 하고 싶은 봇은 희망, 모두 1~4초 뒤 같은 팀 후보 중 한 명에게 투표 (사람이 후보면 사람 우선)
-                if (!m.Round.VoteRoundNow) return i;
-                if (_voteRound != m.Round.RoundNumber) { _voteRound = m.Round.RoundNumber; _wished = _voted = false; _voteAt = now + Rand(1f, 4f); }
-                if (!_wished && PreferredClass == PlayerClass.King) { _wished = true; i.PickClass = 1; return i; }
-                if (!_voted && now >= _voteAt)
-                {
-                    int pick = -1, n = 0;
-                    for (int p = 0; p < MatchController.MaxPlayers; p++)
-                    {
-                        if (m.Avatars[p].Team != _me.Team || !m.Round.Connected[p] || !m.Round.IsCandidate(p)) continue;
-                        bool human = p == m.HumanIndex;   // 사람 자리(쇼케이스의 봇 조작 포함)가 후보면 그쪽으로
-                        if (human) { pick = p; break; }
-                        if (_rng.Next(++n) == 0) pick = p;
-                    }
-                    if (pick >= 0) { _voted = true; i.Vote = (sbyte)pick; }
-                }
+                // 봇은 투표하지 않는다 (사람들이 정한다). 후보 목록에는 기본으로 들어 있어서 사람이 봇을 왕으로 뽑을 수는 있다.
                 return i;
             }
             if (phase != RoundPhase.Live || !_me.Alive) return i;

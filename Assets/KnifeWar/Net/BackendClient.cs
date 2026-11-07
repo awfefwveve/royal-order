@@ -83,8 +83,8 @@ namespace KnifeWar.Net
     [Serializable] public sealed class PartyMemberDto { public string id; public string name; public bool leader; public bool me; }
     [Serializable] public sealed class PartyDto { public bool inParty; public string id; public string code; public string leaderId; public bool isLeader; public PartyMemberDto[] members; public string searchState; }
     [Serializable] public sealed class RegisterResponse { public string serverId; }
-    [Serializable] public sealed class AssignedPlayerDto { public string accountId; public string name; public int slot; public int team; }
-    [Serializable] public sealed class AssignmentDto { public string matchId; public string region; public AssignedPlayerDto[] players; }
+    [Serializable] public sealed class AssignedPlayerDto { public string accountId; public string name; public int slot; public int team; public bool bot; }
+    [Serializable] public sealed class AssignmentDto { public string matchId; public string region; public AssignedPlayerDto[] players; public bool custom; }
     [Serializable] public sealed class AssignmentResponse { public bool assigned; public AssignmentDto assignment; }
 
     /// <summary>입장 토큰 검증 (게임 서버). 백엔드와 같은 ServerSecret으로 HMAC-SHA256 서명을 확인.</summary>

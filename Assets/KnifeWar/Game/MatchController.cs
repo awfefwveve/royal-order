@@ -8,7 +8,7 @@ using UnityEngine.SceneManagement;
 
 namespace KnifeWar.Game
 {
-    public enum SlotKind : byte { Bot = 0, LocalHuman = 1, Remote = 2 }
+    public enum SlotKind : byte { Bot = 0, LocalHuman = 1, Remote = 2, Empty = 3 }   // Empty: 사용자 설정에서 비워 둔 칸 (봇 없음)
 
     /// <summary>클라이언트가 서버에 보내는 한 틱 분량의 입력.</summary>
     public struct NetCommand
@@ -26,6 +26,7 @@ namespace KnifeWar.Game
         public Vector3 Pos;
         public float Yaw, Pitch, Crouch;
         public bool Alive;
+        public bool Present;        // false = 빈 칸 (사용자 설정에서 봇을 안 넣은 자리)
         public PlayerClass Class;
         public PlayerClass Pick;    // 준비 단계: King = 왕 희망(후보)
         public sbyte Vote;          // 준비 단계: 투표한 칸 (-1 없음)
@@ -288,6 +289,18 @@ namespace KnifeWar.Game
             RosterChanged?.Invoke();
         }
 
+        /// <summary>사용자 설정: 이 칸은 비워 둔다 (봇 없음, 투표·생존 집계에서 제외, 화면에서 숨김). Begin 뒤에 서버가 부른다.</summary>
+        public void SetSlotEmpty(int p)
+        {
+            if (p < 0 || p >= MaxPlayers || Slots[p] != SlotKind.Bot) return;
+            Slots[p] = SlotKind.Empty;
+            Round.SetConnected(p, false);
+            Avatars[p].SetPresent(false);
+            RosterChanged?.Invoke();
+        }
+
+        public bool IsPresent(int p) => p >= 0 && p < MaxPlayers && Slots[p] != SlotKind.Empty && Avatars[p].Present;
+
         /// <summary>원격 플레이어에게 칸 배정. preferred가 있으면 그 칸, 없으면 사람이 적은 팀의 빈 칸.</summary>
         public int AssignRemoteSlot(int preferred = -1)
         {
@@ -410,6 +423,8 @@ namespace KnifeWar.Game
 
                 switch (Slots[p])
                 {
+                    case SlotKind.Empty:
+                        continue;
                     case SlotKind.Bot:
                     {
                         var i = _bots[p].Think(this, Time.time, dt);
@@ -1027,6 +1042,7 @@ namespace KnifeWar.Game
                 Round.ApplyPickMirror(p, ps.Pick);
                 Round.ApplyVoteMirror(p, ps.Vote);
                 var a = Avatars[p];
+                if (a.Present != ps.Present) { a.SetPresent(ps.Present); Round.SetConnected(p, ps.Present); if (ps.Present) Round.Alive[p] = ps.Alive; }
                 a.SetClass(ps.Class);
                 if (a.Alive != ps.Alive) a.SetAlive(ps.Alive);
             }

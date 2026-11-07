@@ -31,7 +31,7 @@ namespace KnifeWar.Net
 
     public static class NetProtocol
     {
-        public const ushort Version = 8;   // 8: 현현(명령 플래그), 화살 이벤트, 몬스터 준비 상태
+        public const ushort Version = 9;   // 9: 빈 칸(Present), 입장 때 덱, 현현
         public const ushort DefaultPort = 7777;
         public const int MaxCommandsPerPacket = 4;
         public const int CorrectionsPerSnapshot = 16;
@@ -99,6 +99,7 @@ namespace KnifeWar.Net
             if (p.Alive) flags |= 1;
             if (p.Class == PlayerClass.King) flags |= 2;
             if (p.Pick == PlayerClass.King) flags |= 4;
+            if (p.Present) flags |= 8;
             w.Byte(flags);
             w.Byte((byte)Mathf.Clamp(p.Hp, 0, 255));
             w.Byte(p.TeleportSeq);
@@ -116,6 +117,7 @@ namespace KnifeWar.Net
             p.Alive = (flags & 1) != 0;
             p.Class = (flags & 2) != 0 ? PlayerClass.King : PlayerClass.Knight;
             p.Pick = (flags & 4) != 0 ? PlayerClass.King : PlayerClass.Knight;
+            p.Present = (flags & 8) != 0;
             p.Hp = r.Byte();
             p.TeleportSeq = r.Byte();
             p.Vote = r.SByte();

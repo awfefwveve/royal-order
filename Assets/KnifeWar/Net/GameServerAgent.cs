@@ -83,7 +83,14 @@ namespace KnifeWar.Net
 
             Debug.Log($"[KnifeWar] 경기 배정 match={_assignment.matchId} 인원={_assignment.players.Length}");
             _m.Begin(NetRole.Server, -1);
-            foreach (var p in _assignment.players) _m.ReserveSlot(p.slot, p.name);
+            foreach (var p in _assignment.players) if (!p.bot) _m.ReserveSlot(p.slot, p.name);
+            if (_assignment.custom)
+            {
+                // 사용자 설정: 방에 있던 사람·봇 자리만 남기고 나머지는 빈 칸 (자동으로 봇을 채우지 않음)
+                var listed = new System.Collections.Generic.HashSet<int>();
+                foreach (var p in _assignment.players) listed.Add(p.slot);
+                for (int s = 0; s < MatchController.MaxPlayers; s++) if (!listed.Contains(s)) _m.SetSlotEmpty(s);
+            }
             NetInfo.Status = $"Match {_assignment.matchId}";
 
             // 경기 종료 대기 (+ 빈 경기·너무 긴 경기 감시)

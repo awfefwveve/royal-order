@@ -107,7 +107,9 @@ public static class Program2 {
       int t = 0; r.Tick(t++);
       Check(r.Phase == RoundPhase.Select && r.RoundNumber == 1 && r.VoteRoundNow, "12명 접속 → 1라운드 준비 단계 = 왕 투표");
       Check(r.PickClass(2, PlayerClass.King) && r.PickClass(3, PlayerClass.King), "같은 팀 둘 다 왕 희망 가능 (후보)");
-      Check(!r.Vote(0, 4), "후보가 아닌 팀원에게는 투표 불가");
+      Check(r.IsCandidate(4) && r.Vote(0, 4), "기본으로 팀원 전원이 후보 → 아무에게나 투표 가능");
+      Check(r.PickClass(4, PlayerClass.Knight) && !r.IsCandidate(4) && !r.Vote(0, 4), "'왕 안 할래'를 누르면 후보에서 빠지고 투표 불가");
+      r.Vote(0, -1);
       Check(!r.Vote(0, 8), "상대 팀에게는 투표 불가");
       Check(r.Vote(0, 2) && r.Vote(1, 2) && r.Vote(4, 3) && r.VoteCount(2) == 2 && r.VoteCount(3) == 1, "투표 집계");
       Check(r.Vote(1, 3) && r.VoteCount(2) == 1 && r.VoteCount(3) == 2, "다시 누르면 표 바꿈");
@@ -160,9 +162,16 @@ public static class Program2 {
       var r2 = new RoundRules(RoundConfig.Default, TR, seed: 11);
       for (int i = 0; i < 12; i++) r2.SetConnected(i, true);
       t = 0; r2.Tick(t++);
-      r2.PickClass(0, PlayerClass.King); r2.PickClass(1, PlayerClass.King); r2.Vote(2, 0); r2.Vote(3, 1);
+      for (int i = 2; i < 6; i++) r2.PickClass(i, PlayerClass.Knight);   // 0·1만 후보로 남김
+      r2.Vote(2, 0); r2.Vote(3, 1);
       while (r2.Phase == RoundPhase.Select) r2.Tick(t++);
       Check(r2.KingOf(0) == 0 || r2.KingOf(0) == 1, "동점: 후보 중 무작위");
+      // 1표라도 단독 최다면 그 사람
+      var r2b = new RoundRules(RoundConfig.Default, TR, seed: 3);
+      for (int i = 0; i < 12; i++) r2b.SetConnected(i, true);
+      t = 0; r2b.Tick(t++); r2b.Vote(2, 4);
+      while (r2b.Phase == RoundPhase.Select) r2b.Tick(t++);
+      Check(r2b.KingOf(0) == 4, $"1표만 받아도 단독 최다면 왕 (got {r2b.KingOf(0)})");
 
       // 4라운드 재투표: 무표면 이전 왕 유지, 표가 있으면 바뀜
       var r3 = new RoundRules(RoundConfig.Default, TR, seed: 5);
@@ -197,7 +206,7 @@ public static class Program2 {
     {
       var r = new RoundRules(RoundConfig.Default, TR);
       for (int i = 0; i < 12; i++) r.SetConnected(i, true);
-      int t = 0; r.Tick(t++); r.PickClass(5, PlayerClass.King); r.PickClass(11, PlayerClass.King);
+      int t = 0; r.Tick(t++); r.Vote(0, 5); r.Vote(6, 11);
       while (r.Phase == RoundPhase.Select) r.Tick(t++);
       r.Kill(11); r.Tick(t++);
       Check(r.Phase == RoundPhase.RoundEnd && r.Score[0] == 1 && r.AliveCount(1) == 5, "상대 왕만 죽어도 즉시 라운드 승리 (기사 5명 생존)");
@@ -309,7 +318,7 @@ public static class Program2 {
     {
       var r = new RoundRules(RoundConfig.Default, TR);
       for (int i = 0; i < 12; i++) r.SetConnected(i, true);
-      int t = 0; r.Tick(t++); r.PickClass(0, PlayerClass.King); r.PickClass(6, PlayerClass.King);
+      int t = 0; r.Tick(t++); r.Vote(1, 0); r.Vote(7, 6);   // 0·6을 왕으로
       while (r.Phase == RoundPhase.Select) r.Tick(t++);
       var sim = new MonsterSim(1000, TR, LaneConfig.Default);
       var w = new WizardRules(12, TR, teamMonsterCap: 5);

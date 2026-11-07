@@ -101,8 +101,8 @@ namespace KnifeWar.Core
         public int SecondsLeft(int tick) => Math.Max(0, (PhaseEndTick - tick + TickRate - 1) / TickRate);
 
         /// <summary>
-        /// 투표 라운드의 준비 단계에서만: King = 왕 희망(후보 등록), Knight = 희망 취소.
-        /// 실제 왕은 라운드 시작 때 투표 결과로 정해진다.
+        /// 투표 라운드의 준비 단계에서만: 기본으로 팀원 전원이 후보. Knight = "왕 안 할래"(후보에서 빠짐), King = 다시 후보.
+        /// 실제 왕은 라운드 시작 때 투표 결과로 정해진다 (1표라도 단독 최다면 그 사람).
         /// </summary>
         public bool PickClass(int player, PlayerClass c)
         {
@@ -123,7 +123,8 @@ namespace KnifeWar.Core
 
         /// <summary>준비 단계 표시용: 후보면 King, 아니면 Knight (투표가 없는 라운드는 현재 직업).</summary>
         public PlayerClass GetPick(int player) => _pick[player] ?? Class[player];
-        public bool IsCandidate(int player) => _pick[player] == PlayerClass.King;
+        /// <summary>후보: 접속해 있고 "왕 안 할래"를 누르지 않은 모든 팀원 (기본 전원).</summary>
+        public bool IsCandidate(int player) => player >= 0 && player < MaxPlayers && Connected[player] && _pick[player] != PlayerClass.Knight;
         public int VoteOf(int player) => _vote[player];
 
         public int VoteCount(int candidate)

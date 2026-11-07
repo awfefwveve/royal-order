@@ -236,7 +236,8 @@ namespace KnifeWar.Net
                     Crouch = a.Crouch,
                     Alive = a.Alive,
                     Class = _m.Round.Class[p],
-                    Pick = _m.Round.IsCandidate(p) ? PlayerClass.King : PlayerClass.Knight,   // 준비 단계 후보 표시
+                    Pick = _m.Round.IsCandidate(p) ? PlayerClass.King : PlayerClass.Knight,
+                    Present = _m.IsPresent(p),   // 준비 단계 후보 표시
                     Vote = (sbyte)_m.Round.VoteOf(p),
                     Hp = _m.Combat.Hp[p],
                     TeleportSeq = a.TeleportSeq,

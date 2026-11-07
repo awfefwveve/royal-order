@@ -312,7 +312,7 @@ public sealed class Matchmaker
     /// 사용자 설정 대전: 정해진 칸 그대로 경기 생성 (빈 칸은 서버에서 봇). MMR 반영 없음.
     /// 실패하면 null + error (busy = 누가 다른 경기 중, no_server = 빈 게임 서버 없음).
     /// </summary>
-    public string CreateCustomMatch(List<(Account account, int slot, Dictionary<string, int> pings)> players, out string error)
+    public string CreateCustomMatch(List<(Account account, int slot, Dictionary<string, int> pings)> players, List<int> botSlots, out string error)
     {
         error = null;
         lock (_lock)
@@ -329,8 +329,10 @@ public sealed class Matchmaker
             if (region == null) { error = "no_server"; return null; }
 
             string matchId = Guid.NewGuid().ToString("N")[..12];
-            var assignment = new ServerRegistry.Assignment { MatchId = matchId, Region = region };
+            var assignment = new ServerRegistry.Assignment { MatchId = matchId, Region = region, Custom = true };
             var record = new MatchRecord { Id = matchId, Region = region, CreatedAt = TokenService.Now(), Custom = true };
+            foreach (int slot in botSlots)
+                assignment.Players.Add(new ServerRegistry.AssignedPlayer { AccountId = "", Name = "", Slot = slot, Team = slot < TeamSize ? 0 : 1, Bot = true });
             foreach (var (a, slot, _) in players)
             {
                 int team = slot < TeamSize ? 0 : 1;

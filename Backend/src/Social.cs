@@ -76,6 +76,7 @@ public sealed class RoomService
         public string Name { get; set; } = "";
         public Dictionary<string, int> Pings { get; set; } = new();
         public long LastSeen { get; set; }
+        public bool IsBot { get; set; }   // 방장이 넣은 봇 자리 (AccountId = "bot")
     }
 
     public sealed class Room
@@ -86,7 +87,7 @@ public sealed class RoomService
         public Seat[] Seats { get; set; } = new Seat[Slots];
         public string MatchId { get; set; }          // 시작했으면 경기 id
         public long CreatedAt { get; set; }
-        public IEnumerable<Seat> People => Seats.Where(s => s != null);
+        public IEnumerable<Seat> People => Seats.Where(s => s != null && !s.IsBot);
     }
 
     readonly object _lock = new();
@@ -173,6 +174,29 @@ public sealed class RoomService
         }
     }
 
+    /// <summary>방장이 빈 칸에 봇을 넣거나(add) 봇 자리를 비운다. 실패: host_only, bad_slot, started.</summary>
+    public string SetBot(string hostId, int slot, bool add)
+    {
+        lock (_lock)
+        {
+            if (!_byAccount.TryGetValue(hostId, out var id) || !_byId.TryGetValue(id, out var r) || r.HostId != hostId) return "host_only";
+            if (r.MatchId != null && _mm.MatchRunning(r.MatchId)) return "started";
+            if (slot < 0 || slot >= Slots) return "bad_slot";
+            var s = r.Seats[slot];
+            if (add)
+            {
+                if (s != null) return "bad_slot";
+                r.Seats[slot] = new Seat { AccountId = "bot", Name = "", IsBot = true, LastSeen = TokenService.Now() };
+            }
+            else
+            {
+                if (s == null || !s.IsBot) return "bad_slot";
+                r.Seats[slot] = null;
+            }
+            return null;
+        }
+    }
+
     public bool Kick(string hostId, string target)
     {
         lock (_lock)
@@ -197,13 +221,19 @@ public sealed class RoomService
             if (!_byAccount.TryGetValue(hostId, out var id) || !_byId.TryGetValue(id, out var r) || r.HostId != hostId) return "host_only";
             if (r.MatchId != null && _mm.MatchRunning(r.MatchId)) return "started";
             var players = new List<(Account account, int slot, Dictionary<string, int> pings)>();
+            var bots = new List<int>();
             for (int i = 0; i < Slots; i++)
             {
                 var s = r.Seats[i];
-                var a = s == null ? null : getAccount(s.AccountId);
+                if (s == null) continue;
+                if (s.IsBot) { bots.Add(i); continue; }
+                var a = getAccount(s.AccountId);
                 if (a != null) players.Add((a, i, s.Pings));
             }
-            string matchId = _mm.CreateCustomMatch(players, out string error);
+            // 양 팀에 최소 1명(사람 또는 봇)은 있어야 경기가 시작된다
+            bool a0 = r.Seats.Take(6).Any(s => s != null), a1 = r.Seats.Skip(6).Any(s => s != null);
+            if (!a0 || !a1) return "need_both_teams";
+            string matchId = _mm.CreateCustomMatch(players, bots, out string error);
             if (matchId == null) return error;
             r.MatchId = matchId;
             return null;
@@ -213,7 +243,7 @@ public sealed class RoomService
     void LeaveLocked(string accountId)
     {
         if (!_byAccount.Remove(accountId, out var id) || !_byId.TryGetValue(id, out var r)) return;
-        for (int i = 0; i < Slots; i++) if (r.Seats[i]?.AccountId == accountId) r.Seats[i] = null;
+        for (int i = 0; i < Slots; i++) if (r.Seats[i] != null && !r.Seats[i].IsBot && r.Seats[i].AccountId == accountId) r.Seats[i] = null;
         if (!r.People.Any())
         {
             _byId.Remove(r.Id);

@@ -8,7 +8,7 @@ namespace KnifeWar.Net
     [Serializable] public sealed class FriendDto { public string id; public string displayId; public string state; }
     [Serializable] public sealed class InviteDto { public string id; public string from; public string kind; public string code; }
     [Serializable] public sealed class FriendsDto { public FriendDto[] friends; public FriendDto[] incoming; public FriendDto[] outgoing; public InviteDto[] invites; }
-    [Serializable] public sealed class SeatDto { public int slot; public string id; public string name; public bool host; public bool me; }
+    [Serializable] public sealed class SeatDto { public int slot; public string id; public string name; public bool host; public bool me; public bool bot; }
     [Serializable] public sealed class RoomDto { public bool inRoom; public string code; public bool isHost; public bool started; public SeatDto[] seats; }
 
     /// <summary>
@@ -266,7 +266,8 @@ namespace KnifeWar.Net
                 var s = _room.seats != null && i < _room.seats.Length ? _room.seats[i] : null;
                 float sx = i < 6 ? x0 : x1, sy = y + (i % 6) * (rowH + 6);
                 var r = new Rect(sx, sy, colW, rowH);
-                bool human = s != null && !string.IsNullOrEmpty(s.id);
+                bool bot = s != null && s.bot;
+                bool human = s != null && !bot && !string.IsNullOrEmpty(s.id);
                 bool hover = FE.Hover(r);
                 FE.Fill(r, human ? (s.me ? new Color(FE.Gold.r, FE.Gold.g, FE.Gold.b, 0.22f) : new Color(0.08f, 0.11f, 0.18f, 0.95f)) : new Color(1, 1, 1, hover ? 0.07f : 0.03f));
                 FE.Border(r, human && s.me ? FE.Gold : new Color(1, 1, 1, hover ? 0.3f : 0.12f));
@@ -277,11 +278,25 @@ namespace KnifeWar.Net
                     if (_room.isHost && !s.me && !_room.started && FE.Button(new Rect(sx + colW - 38, sy + 7, 30, 30), "×", FE.Kind.Ghost, 16))
                         StartCoroutine(SocialCall("/room/kick", IdBody(s.id), null));
                 }
+                else if (bot)
+                {
+                    FE.Text(new Rect(sx + 14, sy, colW - 60, rowH), L.T("room_bot") + king, 15, new Color(0.8f, 0.85f, 0.95f), TextAnchor.MiddleLeft);
+                    if (_room.isHost && !_room.started && FE.Button(new Rect(sx + colW - 38, sy + 7, 30, 30), "×", FE.Kind.Ghost, 16))
+                        StartCoroutine(SocialCall("/room/bot", $"{{\"slot\":{i},\"add\":false}}", (c, t) => { if (c == 200) _room = JsonUtility.FromJson<RoomDto>(t); }));
+                }
                 else
                 {
-                    FE.Text(new Rect(sx + 14, sy, colW - 28, rowH), L.T("room_bot") + king, 15, FE.Sub, TextAnchor.MiddleLeft);
-                    if (hover && !_room.started) FE.Text(new Rect(sx, sy, colW - 14, rowH), L.T("room_move"), 12, FE.Gold, TextAnchor.MiddleRight);
-                    if (FE.Clicked(r) && !_socialBusy && !_room.started) StartCoroutine(SocialCall("/room/move", $"{{\"slot\":{i}}}", (c, t) => { if (c == 200) _room = JsonUtility.FromJson<RoomDto>(t); }));
+                    // 빈 칸: 클릭하면 내가 옮겨감. 방장은 [+봇]으로 봇을 넣을 수 있다 (안 넣으면 그 자리는 빈 채로 시작)
+                    FE.Text(new Rect(sx + 14, sy, colW - 28, rowH), L.T("room_empty") + king, 15, FE.Sub, TextAnchor.MiddleLeft);
+                    bool botBtn = _room.isHost && !_room.started;
+                    if (botBtn && FE.Button(new Rect(sx + colW - 78, sy + 7, 70, 30), L.T("room_add_bot"), FE.Kind.Ghost, 13))
+                        StartCoroutine(SocialCall("/room/bot", $"{{\"slot\":{i},\"add\":true}}", (c, t) => { if (c == 200) _room = JsonUtility.FromJson<RoomDto>(t); }));
+                    else
+                    {
+                        if (hover && !_room.started) FE.Text(new Rect(sx, sy, colW - (botBtn ? 86 : 14), rowH), L.T("room_move"), 12, FE.Gold, TextAnchor.MiddleRight);
+                        var moveRect = botBtn ? new Rect(sx, sy, colW - 86, rowH) : r;
+                        if (FE.Clicked(moveRect) && !_socialBusy && !_room.started) StartCoroutine(SocialCall("/room/move", $"{{\"slot\":{i}}}", (c, t) => { if (c == 200) _room = JsonUtility.FromJson<RoomDto>(t); }));
+                    }
                 }
             }
             y += 6 * (rowH + 6) + 8;
@@ -306,6 +321,7 @@ namespace KnifeWar.Net
                     if (c == 200) { _room = JsonUtility.FromJson<RoomDto>(t); StartCoroutine(Matchmake(_backendUrl.Trim(), _profile.name, "", _lag, false)); }
                     else if (t.Contains("no_server")) SocialMsg(L.T("room_no_server"));
                     else if (t.Contains("busy")) SocialMsg(L.T("room_busy"));
+                    else if (t.Contains("need_both_teams")) SocialMsg(L.T("room_need_both"));
                     else SocialMsg(L.T("fr_failed"));
                 }));
             GUI.enabled = !_socialBusy;
