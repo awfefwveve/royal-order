@@ -99,11 +99,46 @@ from cracks (subtle, small areas only). [공통 스타일 문구]
 
 | 파일 | [MONSTER] |
 |---|---|
-| `monster_0_grunt` | `a small hunched hollow footsoldier, 1.2 m tall, mismatched rusted armor plates, one oversized jagged blade arm, fast and light` |
-| `monster_1_tank` | `a huge hulking hollow brute, 1.8 m tall and very wide, massive slab-like armor, one giant shield fused to its left arm, slow and heavy` |
-| `monster_2_ranged` | `a thin tall hollow caster, 1.1 m tall (hovering slightly hunched), tattered hood and robes over a cage-like armor torso, a glowing golden orb held in a skeletal gauntlet` |
+| `monster_0_footman` | `a small hunched hollow footsoldier, 1.2 m tall, mismatched rusted armor plates, a long jagged spear, fast and light` |
+| `monster_1_shield` | `a stocky hollow shieldbearer, 1.6 m tall and wide, massive slab-like armor, one giant tower shield fused to its left arm, slow and heavy` |
+| `monster_2_archer` | `a thin hollow archer, 1.1 m tall slightly hunched, tattered hood over a cage-like armor torso, a bone longbow drawn, quiver of golden-tipped arrows` |
+| `monster_3_ogre` | `a giant hollow ogre, 2.6 m tall, bulging plates of armor over a bloated iron body, huge club-like fists, lumbering and brutal` |
+| `monster_4_twinogre` | `a colossal two-headed hollow ogre, 2.9 m tall, two helmeted heads side by side snarling, four thick arms, even heavier armor` |
+| `monster_5_deathknight` | `a tall hollow death knight, 2.1 m, black full plate with a torn cape, a huge greatsword, faint purple-black rune light instead of gold` |
+| `monster_6_firegolem` | `a volcanic golem, 2.8 m, body of cracked black basalt with glowing lava seams, molten core visible through the chest, slow heavy steps leaving embers (no team colors)` |
 
-팀 구분은 금빛 틈 색은 그대로 두고 **천 조각 색**만 A팀 청색 / B팀 적색.
+팀 구분은 금빛 틈 색은 그대로 두고 **천 조각 색**만 A팀 청색 / B팀 적색. (화염 골렘은 팀 색 없음)
+
+### 건물 (성 1층 양옆)
+| 파일 | 프롬프트 |
+|---|---|
+| `building_barracks` | `a small medieval field barracks, 2 x 2 m footprint under 3 m tall, dark timber and iron, a team banner pole, a doorway where soldiers march out, plain grey background, three-quarter view` |
+| `building_manawell` | `a small stone mana well, 1.5 m across, glowing cool blue water with soft rising motes, iron frame and bucket, plain grey background, three-quarter view` |
+
+---
+
+## 3-1. GPT — 카드 그림 (왕의 카드 10장, 512×288 가로)
+
+카드 테두리는 게임이 그리고(종류별 색), **그림만** 만든다. 글자·테두리 없이, 16:9 가로, 가운데에 주인공, 어두운 배경에 금빛/붉은 빛.
+
+```
+Trading card illustration for a dark fantasy game, 16:9 landscape, no text, no border, no frame:
+[CARD]. Painterly realism, dramatic lighting, subject centered and large, dark atmospheric background.
+[공통 스타일 문구]
+```
+
+| 파일 | [CARD] |
+|---|---|
+| `card_art_footman` | `a hollow footsoldier charging with a jagged spear, golden rune light in its cracks` |
+| `card_art_shield` | `a hollow shieldbearer bracing behind a huge tower shield, sparks glancing off` |
+| `card_art_archer` | `a hooded hollow archer drawing a bone longbow, golden arrow tip glowing` |
+| `card_art_ogre` | `a giant hollow ogre roaring, raising club-like fists, towering over broken shields` |
+| `card_art_twinogre` | `a colossal two-headed ogre, both helmeted heads snarling, four arms spread` |
+| `card_art_deathknight` | `a black-armored death knight on a battlefield, greatsword planted, torn cape, purple-black rune glow` |
+| `card_art_volcano` | `a volcano erupting behind a castle bridge, lava rivers, ash sky, a lava golem rising from the ground` |
+| `card_art_barracks` | `a dark timber barracks with a crimson banner, hollow soldiers marching out of its door at night` |
+| `card_art_manawell` | `a stone well overflowing with glowing blue mana light, motes rising into the dark` |
+| `card_art_warhorn` | `a knight commander blowing a huge golden war horn, knights charging behind him across a bridge` |
 
 ---
 
@@ -191,12 +226,23 @@ no other characters, realistic weight and momentum, armor and cape follow the bo
 ### 왕 · 몬스터
 | 파일 | 프롬프트 |
 |---|---|
+| `card_play` | `placing a thick paper card on a wooden table with a soft magical sparkle, 0.4 seconds` |
+| `card_draw` | `sliding a card from a deck, quick paper slide, 0.3 seconds` |
+| `card_fail` | `dull muted thud with a short low buzz, something refused, 0.3 seconds` |
 | `summon_0` | `golden magic summoning a small creature, quick rising shimmer and a light metallic materialization, 0.8 seconds` |
-| `summon_1` | `golden magic summoning a huge armored brute, deep rumbling build-up then heavy metal impact, 0.8 seconds` |
-| `summon_2` | `golden magic summoning a ghostly caster, airy whispering shimmer and a soft hum, 0.8 seconds` |
-| `buff_cast` | `holy golden blessing spell, warm rising choir-like shimmer and soft bells, 1 second` |
-| `monster_attack_0/1/2` | `small hollow armor creature slashing, quick scrape` / `huge armored brute smashing with a shield, heavy crash` / `ghostly caster firing a golden orb, magical zap` |
-| `monster_death_0/1/2` | `hollow armor falling apart into scrap metal, golden light fading` (크기에 맞게 small / huge / ghostly) |
+| `summon_1` | `golden magic summoning a heavy shieldbearer, rumbling build-up then a metal shield slam, 0.8 seconds` |
+| `summon_2` | `golden magic summoning a ghostly archer, airy whispering shimmer and a bowstring twang, 0.8 seconds` |
+| `summon_3` | `golden magic summoning a giant ogre, deep rumble then a heavy ground stomp and a roar, 0.8 seconds` |
+| `summon_4` | `golden magic summoning a colossal two-headed ogre, deeper rumble, two overlapping roars, 0.8 seconds` |
+| `summon_5` | `dark magic summoning a death knight, low choir drone and a greatsword drawn, 0.8 seconds` |
+| `summon_6` | `a lava golem rising from the ground, cracking rock, molten hiss and a deep roar, 0.8 seconds` |
+| `volcano_start` | `volcanic eruption in the distance, deep earth rumble building to an explosion, ash wind, 3 seconds` |
+| `volcano_loop` | `distant volcano ambience, low rumbling, crackling lava, occasional ember pops, seamless 10 second loop, stereo` |
+| `build_place` | `wooden and stone structure being set down with hammering and a final thud, 0.8 seconds` |
+| `barracks_spawn` | `a door creaks open and marching armored footsteps start, 0.5 seconds` |
+| `warhorn` | `a huge medieval war horn blown once, long and powerful, 1.5 seconds` |
+| `monster_attack_0~6` | `small hollow armor creature slashing, quick scrape` / `huge armored brute smashing with a shield, heavy crash` / `ghostly caster firing a golden orb, magical zap` |
+| `monster_death_0~6` | `hollow armor falling apart into scrap metal, golden light fading` (크기에 맞게 small / huge / ghostly) |
 | `king_down` | `the king falls in battle, deep dramatic orchestral hit with a bell toll and armor crash, 2 seconds` |
 
 ### 라운드 · UI
