@@ -129,6 +129,7 @@ namespace KnifeWar.EditorTools
                 _current = _queue.Dequeue();
                 ApplyTuning(_current);
                 _started = EditorApplication.timeSinceStartup;
+                if (_lastImageModel == null) { var saved = EditorPrefs.GetString("kw.artgen.model", ""); if (saved.Length > 0) _lastImageModel = saved; }
                 var job = _current; bool force = _force; string step = _step;
                 string root = ProjectRoot;
                 Debug.Log($"[artgen] ▶ {job.Name}");
@@ -186,7 +187,7 @@ namespace KnifeWar.EditorTools
             {
                 // 옆·뒤 모습 (동작 추적용): 정면 그림을 참조로 같은 디자인 유지
                 if (!secrets.TryGetValue("OPENAI_API_KEY", out var okey2) || okey2.Length < 10) return "OPENAI_API_KEY 없음 (Deploy/secrets.env)";
-                string model = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m2) && m2.Length > 0 ? m2 : _lastImageModel ?? UnityEditor.EditorPrefs.GetString("kw.artgen.model", "gpt-image-2.5-flare");
+                string model = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m2) && m2.Length > 0 ? m2 : _lastImageModel ?? "gpt-image-2.5-flare";
                 const string viewBase = "The SAME character as the attached image: identical design, proportions, armor, colors and details. {0}, orthographic camera, same neutral A-pose, same scale and height, entire body visible with margin, isolated single object on a plain transparent background, even shadowless lighting, no ground shadow.";
                 if (force || !File.Exists(side))
                 {
