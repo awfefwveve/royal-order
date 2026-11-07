@@ -1,0 +1,354 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Threading.Tasks;
+using KnifeWar.Game;
+using UnityEditor;
+using UnityEngine;
+
+namespace KnifeWar.EditorTools
+{
+    /// <summary>
+    /// 아트 자동 생성 파이프라인 (에디터 안에서 실행 — 유니티는 인터넷이 되므로):
+    ///   1) 원화: OpenAI 이미지 API (gpt-image) → Assets/KnifeWar/Art/Gen/이름/이름_concept.png
+    ///   2) 3D:  NC AI VARCO Image-to-3D API → 이름.glb
+    ///   3) 넣기: GlbImporter → 메시·텍스처·재질 → SkinSet 칸에 자동 연결 (몬스터) / 프리팹 (건물·캐릭터)
+    /// 키는 Deploy/secrets.env 의 OPENAI_API_KEY, NCAI_API_KEY (파일에만, 코드·로그에 안 남김).
+    /// 명령: Logs/claude_artgen.txt 에 "all | monsters | buildings | characters | 이름 [force] [step=image|model|import]"
+    ///       "yaw 이름 각도" / "height 이름 미터" 는 tuning.json 에 저장 후 다시 import 만.
+    /// 이미 있는 결과(png/glb)는 force 가 없으면 다시 만들지 않는다 (돈 아끼기).
+    /// </summary>
+    public static class ArtGen
+    {
+        public const string GenDir = "Assets/KnifeWar/Art/Gen";
+        const string TuningPath = GenDir + "/tuning.json";
+        const string SkinPath = "Assets/KnifeWar/Resources/KnifeWar/SkinSet.asset";
+
+        enum Kind { Monster, Building, Character }
+
+        sealed class Job
+        {
+            public string Name; public Kind Kind; public int Index; public float Height; public string Prompt;
+            public float Yaw;   // tuning.json 으로 덮어씀
+        }
+
+        const string Style = " Style: dark fantasy cinematic realism, AAA console game concept art, physically based materials, " +
+            "clear readable silhouette, restrained detail (no clutter, no excessive scratches, no excessive glow), " +
+            "palette: dark stone #17191D, iron #34383E, royal crimson #641E27, antique gold #A67C38, gold highlight #D9C49A. " +
+            "Soft even studio lighting, subtle cool rim light. No text, no logo, no watermark, no UI, no frame.";
+
+        const string MonsterBase = "Summoned monster for a dark fantasy game: {0}. Full body, three-quarter front view facing slightly left, " +
+            "mid-stride walking pose frozen in place, entire body visible with margin, isolated single object on a plain transparent background, " +
+            "even lighting, no ground shadow. Asymmetric, menacing silhouette clearly different from human knights. " +
+            "Hollow animated armor with faint golden rune light leaking from cracks (subtle, small areas only).";
+
+        const string CharBase = "Full-body character for 3D modeling reference: {0}. Strict front view, orthographic camera, neutral A-pose " +
+            "(arms 45 degrees down, palms facing the body, feet shoulder-width apart, standing straight), entire body visible from head to feet with margin, " +
+            "isolated single object on a plain transparent background, even shadowless lighting, sharp focus. Weapon NOT in hand. Cape hangs straight down behind the body.";
+
+        const string BuildingBase = "{0}. Isolated single object on a plain transparent background, three-quarter view, even lighting, no ground shadow, entire object visible with margin.";
+
+        static readonly Job[] Jobs =
+        {
+            new Job { Name = "monster_0_footman", Kind = Kind.Monster, Index = 0, Height = 1.2f, Prompt = string.Format(MonsterBase, "a small hunched hollow footsoldier, 1.2 m tall, mismatched rusted armor plates, a long jagged spear, fast and light") },
+            new Job { Name = "monster_1_shield", Kind = Kind.Monster, Index = 1, Height = 1.6f, Prompt = string.Format(MonsterBase, "a stocky hollow shieldbearer, 1.6 m tall and wide, massive slab-like armor, one giant tower shield fused to its left arm, slow and heavy") },
+            new Job { Name = "monster_2_archer", Kind = Kind.Monster, Index = 2, Height = 1.1f, Prompt = string.Format(MonsterBase, "a thin hollow archer, 1.1 m tall slightly hunched, tattered hood over a cage-like armor torso, a bone longbow held at the side, quiver of golden-tipped arrows") },
+            new Job { Name = "monster_3_ogre", Kind = Kind.Monster, Index = 3, Height = 2.6f, Prompt = string.Format(MonsterBase, "a giant hollow ogre, 2.6 m tall, bulging plates of armor over a bloated iron body, huge club-like fists, lumbering and brutal") },
+            new Job { Name = "monster_4_twinogre", Kind = Kind.Monster, Index = 4, Height = 2.9f, Prompt = string.Format(MonsterBase, "a colossal two-headed hollow ogre, 2.9 m tall, two helmeted heads side by side snarling, four thick arms, even heavier armor") },
+            new Job { Name = "monster_5_deathknight", Kind = Kind.Monster, Index = 5, Height = 2.1f, Prompt = string.Format(MonsterBase, "a tall hollow death knight, 2.1 m, black full plate with a torn cape, a huge greatsword held low, faint purple-black rune light instead of gold") },
+            new Job { Name = "monster_6_firegolem", Kind = Kind.Monster, Index = 6, Height = 2.8f, Prompt = string.Format(MonsterBase, "a volcanic golem, 2.8 m, body of cracked black basalt with glowing lava seams, molten core visible through the chest, slow heavy stance (no team colors)") },
+            new Job { Name = "building_barracks", Kind = Kind.Building, Index = 0, Height = 3.0f, Prompt = string.Format(BuildingBase, "a small medieval field barracks for a dark fantasy game, 2 x 2 m footprint under 3 m tall, dark timber and iron, a banner pole, a doorway where soldiers march out") },
+            new Job { Name = "building_manawell", Kind = Kind.Building, Index = 1, Height = 1.5f, Prompt = string.Format(BuildingBase, "a small stone mana well for a dark fantasy game, 1.5 m across, glowing cool blue water with soft rising motes, iron frame and bucket") },
+            new Job { Name = "knight_blue", Kind = Kind.Character, Index = 0, Height = 1.83f, Prompt = string.Format(CharBase, "a Royal Order knight, male human, 183 cm, 8 heads tall, athletic build. Fitted plate armor with layered pauldrons, articulated gauntlets and sabatons, a chainmail skirt over leather. Open-face helmet with a narrow nasal guard so the face is visible: short dark hair, trimmed beard, scarred determined face. A short heraldic tabard and a knee-length cape in cold steel blue (#2F4A66), small royal crest (a stylized crown over a sword) on the chest. Belt with a knife sheath on the right hip") },
+            new Job { Name = "knight_red", Kind = Kind.Character, Index = 1, Height = 1.83f, Prompt = string.Format(CharBase, "a Royal Order knight, male human, 183 cm, 8 heads tall, athletic build. Fitted plate armor with layered pauldrons, articulated gauntlets and sabatons, a chainmail skirt over leather. Open-face helmet with a narrow nasal guard so the face is visible: short dark hair, trimmed beard, scarred determined face. A short heraldic tabard and a knee-length cape in royal crimson (#641E27), small royal crest (a stylized crown over a sword) on the chest, antique gold trim. Belt with a knife sheath on the right hip") },
+            new Job { Name = "king_blue", Kind = Kind.Character, Index = 2, Height = 1.9f, Prompt = string.Format(CharBase, "the King of the Royal Order, male human, 190 cm, regal and tall, mature (around 50), grey-streaked beard, stern face. Ornate gilded plate cuirass under a heavy floor-length royal mantle in cold steel blue (#2F4A66) with white fur collar, a tall slender gold crown with a single gem. Long ceremonial robe under the armor. Hands empty") },
+            new Job { Name = "king_red", Kind = Kind.Character, Index = 3, Height = 1.9f, Prompt = string.Format(CharBase, "the King of the Royal Order, male human, 190 cm, regal and tall, mature (around 50), grey-streaked beard, stern face. Ornate gilded plate cuirass under a heavy floor-length royal mantle in royal crimson (#641E27) with white fur collar, a tall slender gold crown with a single gem. Long ceremonial robe under the armor. Hands empty") },
+        };
+
+        // ---- 실행 상태 ----
+        static readonly Queue<Job> _queue = new Queue<Job>();
+        static Job _current;
+        static Task<string> _task;
+        static bool _force;
+        static string _step;   // null = 전부, image / model / import
+        static bool _hooked;
+        static double _started;
+
+        [MenuItem("KnifeWar/아트/생성 (명령 파일 Logs/claude_artgen.txt)", priority = 30)]
+        public static void RunFromFile()
+        {
+            string path = Path.Combine(ProjectRoot, "Logs/claude_artgen.txt");
+            if (!File.Exists(path)) { Debug.LogError("[artgen] 명령 파일 없음: " + path); return; }
+            string args = File.ReadAllText(path).Trim();
+            File.Delete(path);
+            Run(args);
+        }
+
+        public static string ProjectRoot => Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+
+        public static void Run(string args)
+        {
+            var parts = args.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) { Debug.LogError("[artgen] 명령 없음"); return; }
+            if (parts[0] == "yaw" || parts[0] == "height")
+            {
+                if (parts.Length < 3 || !float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float v)) { Debug.LogError("[artgen] 사용법: yaw 이름 각도 / height 이름 미터"); return; }
+                SetTuning(parts[1], parts[0], v);
+                Run(parts[1] + " step=import");
+                return;
+            }
+            _force = false; _step = null;
+            var sel = new List<Job>();
+            foreach (var p in parts)
+            {
+                if (p == "force") { _force = true; continue; }
+                if (p.StartsWith("step=")) { _step = p.Substring(5); continue; }
+                foreach (var j in Jobs)
+                {
+                    bool match = p == "all" || j.Name == p
+                        || (p == "monsters" && j.Kind == Kind.Monster) || (p == "buildings" && j.Kind == Kind.Building) || (p == "characters" && j.Kind == Kind.Character);
+                    if (match && !sel.Contains(j)) sel.Add(j);
+                }
+            }
+            if (sel.Count == 0) { Debug.LogError("[artgen] 맞는 작업 없음: " + args); return; }
+            if (_current != null) { Debug.LogWarning("[artgen] 이미 실행 중 — 뒤에 붙임"); }
+            foreach (var j in sel) _queue.Enqueue(j);
+            Debug.Log($"[artgen] 시작: {sel.Count}개 (force={_force}, step={_step ?? "all"})");
+            if (!_hooked) { _hooked = true; EditorApplication.update += Update; }
+        }
+
+        static void Update()
+        {
+            if (_current == null)
+            {
+                if (_queue.Count == 0) { EditorApplication.update -= Update; _hooked = false; Debug.Log("[artgen] 전부 끝"); return; }
+                _current = _queue.Dequeue();
+                ApplyTuning(_current);
+                _started = EditorApplication.timeSinceStartup;
+                var job = _current; bool force = _force; string step = _step;
+                string root = ProjectRoot;
+                Debug.Log($"[artgen] ▶ {job.Name}");
+                _task = Task.Run(() => NetworkSteps(job, force, step, root));
+                return;
+            }
+            if (!_task.IsCompleted)
+            {
+                return;
+            }
+            string err = _task.IsFaulted ? (_task.Exception?.InnerException?.Message ?? _task.Exception?.Message) : _task.Result;
+            if (!string.IsNullOrEmpty(err)) Debug.LogError($"[artgen] {_current.Name} 실패: {err}");
+            else if (_step == null || _step == "import")
+            {
+                try { ImportStep(_current); }
+                catch (Exception e) { Debug.LogError($"[artgen] {_current.Name} 넣기 실패: {e.Message}"); }
+            }
+            Debug.Log($"[artgen] ■ {_current.Name} ({EditorApplication.timeSinceStartup - _started:F0}초)");
+            _current = null; _task = null;
+        }
+
+        // ---------------- 네트워크 (백그라운드 스레드) ----------------
+
+        static string NetworkSteps(Job job, bool force, string step, string root)
+        {
+            string dir = Path.Combine(root, GenDir, job.Name);
+            Directory.CreateDirectory(dir);
+            string png = Path.Combine(dir, job.Name + "_concept.png");
+            string glb = Path.Combine(dir, job.Name + ".glb");
+            var secrets = ReadSecrets(root);
+
+            bool doImage = step == null || step == "image";
+            bool doModel = step == null || step == "model";
+            if (doImage && (force || !File.Exists(png)))
+            {
+                if (!secrets.TryGetValue("OPENAI_API_KEY", out var okey) || okey.Length < 10) return "OPENAI_API_KEY 없음 (Deploy/secrets.env)";
+                string e = GenerateImage(okey, secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m) ? m : "gpt-image-1", job.Prompt + Style, png);
+                if (e != null) return "원화: " + e;
+                if (File.Exists(glb)) File.Delete(glb);   // 원화가 바뀌면 3D 도 다시
+            }
+            if (doModel && (force || !File.Exists(glb)))
+            {
+                if (!File.Exists(png)) return "원화 파일이 없어 3D 를 못 만듦";
+                if (!secrets.TryGetValue("NCAI_API_KEY", out var nkey) || nkey.Length < 10) return "NCAI_API_KEY 없음 (Deploy/secrets.env)";
+                string e = ImageTo3D(nkey, png, glb);
+                if (e != null) return "3D: " + e;
+            }
+            return null;
+        }
+
+        static Dictionary<string, string> ReadSecrets(string root)
+        {
+            var d = new Dictionary<string, string>();
+            string p = Path.Combine(root, "Deploy/secrets.env");
+            if (!File.Exists(p)) return d;
+            foreach (var line in File.ReadAllLines(p))
+            {
+                var t = line.Trim();
+                if (t.Length == 0 || t.StartsWith("#")) continue;
+                int eq = t.IndexOf('=');
+                if (eq <= 0) continue;
+                string v = t.Substring(eq + 1).Trim().Trim('"', '\'');
+                d[t.Substring(0, eq).Trim()] = v;
+            }
+            return d;
+        }
+
+        static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+
+        static string GenerateImage(string key, string model, string prompt, string outPng)
+        {
+            string body = "{\"model\":" + MiniJson.Quote(model) + ",\"prompt\":" + MiniJson.Quote(prompt) +
+                          ",\"size\":\"1024x1024\",\"quality\":\"medium\",\"background\":\"transparent\",\"output_format\":\"png\",\"n\":1}";
+            using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/images/generations");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+            using var res = Http.SendAsync(req).GetAwaiter().GetResult();
+            string text = res.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            if (!res.IsSuccessStatusCode) return $"HTTP {(int)res.StatusCode}: {Short(text)}";
+            var j = MiniJson.Parse(text) as Dictionary<string, object>;
+            var data = j != null && j.TryGetValue("data", out var dl) ? dl as List<object> : null;
+            if (data == null || data.Count == 0) return "응답에 이미지 없음: " + Short(text);
+            var first = (Dictionary<string, object>)data[0];
+            if (first.TryGetValue("b64_json", out var b64) && b64 is string s) { File.WriteAllBytes(outPng, Convert.FromBase64String(s)); return null; }
+            if (first.TryGetValue("url", out var url) && url is string u)
+            {
+                var bytes = Http.GetByteArrayAsync(u).GetAwaiter().GetResult();
+                File.WriteAllBytes(outPng, bytes); return null;
+            }
+            return "응답 형식 모름: " + Short(text);
+        }
+
+        static string ImageTo3D(string key, string png, string outGlb)
+        {
+            string requestId;
+            using (var form = new MultipartFormDataContent())
+            {
+                var img = new ByteArrayContent(File.ReadAllBytes(png));
+                img.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+                form.Add(img, "image", Path.GetFileName(png));
+                form.Add(new StringContent("tri"), "target_face_type");
+                form.Add(new StringContent("30000"), "target_face_num");   // 게임용: 3만 삼각형
+                form.Add(new StringContent("true"), "generate_texture");
+                form.Add(new StringContent("-1"), "seed");
+                using var req = new HttpRequestMessage(HttpMethod.Post, "https://openapi.ai.nc.com/3d/varco/v1/image-to-3d") { Content = form };
+                req.Headers.Add("OPENAPI_KEY", key);
+                using var res = Http.SendAsync(req).GetAwaiter().GetResult();
+                string text = res.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                if (!res.IsSuccessStatusCode) return $"요청 HTTP {(int)res.StatusCode}: {Short(text)}";
+                var j = MiniJson.Parse(text) as Dictionary<string, object>;
+                if (j == null || !j.TryGetValue("requestId", out var rid)) return "requestId 없음: " + Short(text);
+                requestId = rid.ToString();
+            }
+            var deadline = DateTime.UtcNow.AddMinutes(12);
+            while (true)
+            {
+                System.Threading.Thread.Sleep(5000);
+                if (DateTime.UtcNow > deadline) return "12분 넘게 처리 중";
+                using var req = new HttpRequestMessage(HttpMethod.Get, "https://openapi.ai.nc.com/inference/result/" + requestId);
+                req.Headers.Add("OPENAPI_KEY", key);
+                using var res = Http.SendAsync(req).GetAwaiter().GetResult();
+                string text = res.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                var j = MiniJson.Parse(text) as Dictionary<string, object>;
+                string status = j != null && j.TryGetValue("status", out var st) ? st?.ToString() : null;
+                if (status == "processing" || status == "pending" || status == "queued") continue;
+                if (j != null && j.TryGetValue("model_url", out var mu) && mu is string url && url.Length > 0)
+                {
+                    var bytes = Http.GetByteArrayAsync(url).GetAwaiter().GetResult();
+                    File.WriteAllBytes(outGlb, bytes);
+                    return null;
+                }
+                return $"결과 상태 {status}: {Short(text)}";
+            }
+        }
+
+        static string Short(string s) => s == null ? "" : (s.Length > 300 ? s.Substring(0, 300) + "…" : s);
+
+        // ---------------- 넣기 (메인 스레드) ----------------
+
+        static void ImportStep(Job job)
+        {
+            string dir = $"{GenDir}/{job.Name}";
+            string glbAbs = Path.Combine(ProjectRoot, dir, job.Name + ".glb");
+            if (!File.Exists(glbAbs)) { Debug.LogWarning($"[artgen] {job.Name}: glb 없음, 넣기 건너뜀"); return; }
+            AssetDatabase.Refresh();
+            var r = GlbImporter.Import(glbAbs, dir, job.Name, job.Height, job.Yaw);
+            if (r.Error != null) throw new Exception(r.Error);
+            Debug.Log($"[artgen] {job.Name}: 메시 {r.Mesh.vertexCount} 정점 / 원래 키 {r.RawHeight:F2} → {job.Height}m, yaw {job.Yaw}, 텍스처 {(r.Albedo ? "O" : "X")} 노멀 {(r.Normal ? "O" : "X")}");
+
+            var skin = AssetDatabase.LoadAssetAtPath<SkinSet>(SkinPath);
+            if (skin == null)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(SkinPath));
+                skin = ScriptableObject.CreateInstance<SkinSet>();
+                AssetDatabase.CreateAsset(skin, SkinPath);
+            }
+            if (job.Kind == Kind.Monster)
+            {
+                if (skin.MonsterMesh == null || skin.MonsterMesh.Length < 7) skin.MonsterMesh = new Mesh[7];
+                if (skin.MonsterMaterial == null || skin.MonsterMaterial.Length < 7) skin.MonsterMaterial = new Material[7];
+                if (skin.MonsterScale == null || skin.MonsterScale.Length < 7) skin.MonsterScale = new[] { 1f, 1f, 1f, 1f, 1f, 1f, 1f };
+                skin.MonsterMesh[job.Index] = r.Mesh;
+                skin.MonsterMaterial[job.Index] = r.Material;
+                skin.MonsterScale[job.Index] = 1f;
+            }
+            else
+            {
+                var prefab = GlbImporter.SavePrefab(r, dir, job.Name);
+                if (job.Kind == Kind.Building)
+                {
+                    if (skin.BuildingPrefab == null || skin.BuildingPrefab.Length < 2) skin.BuildingPrefab = new GameObject[2];
+                    skin.BuildingPrefab[job.Index] = prefab;
+                }
+                // 캐릭터는 뼈대를 심은 뒤에 연결 (지금은 프리팹만 만들어 둠)
+            }
+            EditorUtility.SetDirty(skin);
+            AssetDatabase.SaveAssets();
+        }
+
+        // ---------------- 보정값 (tuning.json) ----------------
+
+        static Dictionary<string, object> LoadTuning()
+        {
+            string p = Path.Combine(ProjectRoot, TuningPath);
+            if (!File.Exists(p)) return new Dictionary<string, object>();
+            return MiniJson.Parse(File.ReadAllText(p)) as Dictionary<string, object> ?? new Dictionary<string, object>();
+        }
+
+        static void ApplyTuning(Job job)
+        {
+            var t = LoadTuning();
+            if (t.TryGetValue(job.Name, out var o) && o is Dictionary<string, object> d)
+            {
+                if (d.TryGetValue("yaw", out var y)) job.Yaw = Convert.ToSingle(y);
+                if (d.TryGetValue("height", out var h)) job.Height = Convert.ToSingle(h);
+            }
+        }
+
+        static void SetTuning(string name, string key, float value)
+        {
+            var t = LoadTuning();
+            if (!(t.TryGetValue(name, out var o) && o is Dictionary<string, object> d)) { d = new Dictionary<string, object>(); t[name] = d; }
+            d[key] = (double)value;
+            var sb = new StringBuilder("{\n");
+            bool first = true;
+            foreach (var kv in t)
+            {
+                if (!first) sb.Append(",\n"); first = false;
+                sb.Append("  ").Append(MiniJson.Quote(kv.Key)).Append(": {");
+                bool f2 = true;
+                foreach (var e in (Dictionary<string, object>)kv.Value)
+                {
+                    if (!f2) sb.Append(", "); f2 = false;
+                    sb.Append(MiniJson.Quote(e.Key)).Append(": ").Append(Convert.ToDouble(e.Value).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+                sb.Append('}');
+            }
+            sb.Append("\n}\n");
+            Directory.CreateDirectory(Path.Combine(ProjectRoot, GenDir));
+            File.WriteAllText(Path.Combine(ProjectRoot, TuningPath), sb.ToString());
+            Debug.Log($"[artgen] 보정 저장: {name} {key}={value}");
+        }
+    }
+}

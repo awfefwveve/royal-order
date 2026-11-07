@@ -86,6 +86,12 @@ namespace KnifeWar.Diagnostics
                 Debug.Log($"[claude-cmd] {cmd}");
                 try
                 {
+                    if (cmd.StartsWith("artgen "))   // 아트 생성 파이프라인: artgen monsters | all | 이름 [force] [step=…] | yaw 이름 각도
+                    {
+                        File.WriteAllText(Path.Combine(Path.GetDirectoryName(CmdPath), "claude_artgen.txt"), cmd.Substring(7).Trim());
+                        if (!EditorApplication.ExecuteMenuItem("KnifeWar/아트/생성 (명령 파일 Logs/claude_artgen.txt)")) Debug.LogError("[claude-cmd] 아트 생성 메뉴를 못 찾음");
+                        continue;
+                    }
                     switch (cmd)
                     {
                         case "refresh":

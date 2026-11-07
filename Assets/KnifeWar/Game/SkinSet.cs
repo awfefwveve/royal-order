@@ -42,6 +42,10 @@ namespace KnifeWar.Game
         [Tooltip("종류별 크기 배율")] public float[] MonsterScale = { 1f, 1f, 1f, 1f, 1f, 1f, 1f };
         public Material MonsterTeam0;
         public Material MonsterTeam1;
+        [Tooltip("종류별 텍스처 재질 (아트 생성 결과). 있으면 팀 재질 대신 이걸 쓰고 팀 색은 살짝 물들임")] public Material[] MonsterMaterial = new Material[7];
+
+        [Header("건물 (0 병영, 1 마나 우물 — 발이 원점인 프리팹. 비우면 기본 상자)")]
+        public GameObject[] BuildingPrefab = new GameObject[2];
 
         [Header("맵 (꾸미기만. 실제 발판·벽 충돌은 그대로 두어 판정이 바뀌지 않음)")]
         public GameObject Environment;

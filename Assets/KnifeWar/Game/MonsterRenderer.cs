@@ -72,13 +72,26 @@ namespace KnifeWar.Game
                 for (int t = 0; t < Types; t++)
                 {
                     Material use = mat;
-                    if (t == MonsterDefs.FireGolem && (skin == null || skin.MonsterMesh == null || t >= skin.MonsterMesh.Length || skin.MonsterMesh[t] == null))
+                    MaterialPropertyBlock props = null;
+                    var typed = skin != null && skin.MonsterMaterial != null && t < skin.MonsterMaterial.Length ? skin.MonsterMaterial[t] : null;
+                    if (typed != null)
+                    {
+                        // 종류별 텍스처 재질: 팀 색은 살짝 물들이기만 (파랑 팀 차갑게, 빨강 팀 붉게). 골렘은 팀 색 없음
+                        use = typed.enableInstancing ? typed : new Material(typed) { enableInstancing = true };
+                        if (t != MonsterDefs.FireGolem)
+                        {
+                            props = new MaterialPropertyBlock();
+                            props.SetColor("_Color", team == 0 ? new Color(0.78f, 0.88f, 1f) : new Color(1f, 0.8f, 0.76f));
+                        }
+                    }
+                    else if (t == MonsterDefs.FireGolem && (skin == null || skin.MonsterMesh == null || t >= skin.MonsterMesh.Length || skin.MonsterMesh[t] == null))
                         use = fire ??= ProceduralMonsterMeshes.FireMaterial(mat);
                     _rp[team * Types + t] = new RenderParams(use)
                     {
                         worldBounds = bounds,
                         shadowCastingMode = ShadowCastingMode.On,
                         receiveShadows = true,
+                        matProps = props,
                     };
                 }
             }

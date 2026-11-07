@@ -100,7 +100,16 @@ namespace KnifeWar.Game
             float x = side * (type == BuildingType.Barracks ? MapLayout.GateX + 0.9f + index * 1.5f : MapLayout.GateX + 1.2f + index * 1.9f);
             var root = new GameObject(type == BuildingType.Barracks ? "Barracks" : "ManaWell");
             root.transform.position = new Vector3(x, 0f, z);
-            if (type == BuildingType.Barracks)
+            var skin = SkinSet.Current;
+            var prefab = skin != null && skin.BuildingPrefab != null && type < skin.BuildingPrefab.Length ? skin.BuildingPrefab[type] : null;
+            if (prefab != null)
+            {
+                var inst = Instantiate(prefab, root.transform);
+                inst.transform.localPosition = Vector3.zero;
+                inst.transform.localRotation = Quaternion.Euler(0f, side > 0 ? 180f : 0f, 0f);   // 문이 다리 쪽을 보게
+                inst.transform.localScale = Vector3.one * 0.55f;   // 홀 띠가 좁아서 작게
+            }
+            else if (type == BuildingType.Barracks)
             {
                 ProceduralParts.Box("Walls", root.transform, new Vector3(0f, 0.55f, 0f), new Vector3(1.3f, 1.1f, 1.3f), _wood);
                 var roof = ProceduralParts.Box("Roof", root.transform, new Vector3(0f, 1.3f, 0f), new Vector3(1.4f, 0.4f, 1.4f), ProceduralMaterials.Cloth(team));
