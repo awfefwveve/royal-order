@@ -203,6 +203,7 @@ namespace KnifeWar.Diagnostics
                     RedirectStandardOutput = true, RedirectStandardError = true,
                 });
                 _backendPid = bp?.Id ?? -1;
+                File.WriteAllText(BackendPidPath, _backendPid.ToString());
                 var blog = Path.Combine(TestBackendDir, "backend_log.txt");
                 File.WriteAllText(blog, "");
                 if (bp != null)
@@ -226,6 +227,14 @@ namespace KnifeWar.Diagnostics
             Debug.Log($"[claude-cmd] nettest 시작 (backend={backend}): 서버 + 봇 클라 3 (pids {string.Join(",", pids)}). 5분쯤 뒤 nettest_report");
         }
 
+        static string BackendPidPath => Path.Combine(TestBackendDir, "backend.pid");
+
+        static void ReadBackendPid()
+        {
+            if (_backendPid > 0 || !File.Exists(BackendPidPath)) return;
+            int.TryParse(File.ReadAllText(BackendPidPath).Trim(), out _backendPid);
+        }
+
         static void NetTestKill()
         {
             try
@@ -234,10 +243,12 @@ namespace KnifeWar.Diagnostics
                 {
                     try { p.Kill(); } catch { }
                 }
+                ReadBackendPid();
                 if (_backendPid > 0)
                 {
-                    try { System.Diagnostics.Process.GetProcessById(_backendPid).Kill(); } catch { }
+                    try { var bp = System.Diagnostics.Process.GetProcessById(_backendPid); if (bp.ProcessName.StartsWith("dotnet")) bp.Kill(); } catch { }
                     _backendPid = -1;
+                    try { File.Delete(BackendPidPath); } catch { }
                 }
             }
             catch { }
@@ -275,7 +286,8 @@ namespace KnifeWar.Diagnostics
                     if (++shown > 400) { sb.AppendLine("... (more)"); break; }
                 }
             }
-            // 백엔드 흐름이면: 리더보드(경기 수·MMR 반영)와 서버 목록, 백엔드 로그 꼬리
+            // 백엔드 흐름이면: 리더보드(경기 수·MMR 반영)와 서버 목록, 백엔드 로그 꼬리 (pid 는 도메인 리로드로 잊을 수 있어 파일에서 다시 읽는다)
+            ReadBackendPid();
             if (_backendPid > 0)
             {
                 sb.AppendLine("==== backend /leaderboard/kr");
