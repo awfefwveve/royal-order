@@ -14,6 +14,8 @@ namespace KnifeWar.Diagnostics
     ///   build_linux    — Builds/LinuxServer/KnifeWarServer.x86_64 (헤드리스 데디 서버)
     ///   release        — 버전 +1 빌드 → 패치 → R2 업로드 → 설치 파일 (확인 창 없이)
     ///   showcase       — 게임 화면을 크게 하고 플레이해서 포트폴리오용 스크린샷을 Logs/showcase/ 에 자동 저장
+    ///   nettest        — Windows 빌드 → 데디 서버(2선승) + 봇 클라 3개(핑 100ms)를 창 없이 띄워 한 경기 자동 진행
+    ///   nettest_report — 그 로그들을 모아 Logs/claude_nettest.txt 로 (오류·접속·라운드·킬·경기 끝), 프로세스 정리
     /// 게임 코드에 의존하지 않아서 게임 코드가 컴파일 실패해도 동작한다.
     /// </summary>
     [InitializeOnLoad]
@@ -67,7 +69,14 @@ namespace KnifeWar.Diagnostics
             if (!File.Exists(CmdPath)) return;
 
             string[] lines;
-            try { lines = File.ReadAllLines(CmdPath); File.Delete(CmdPath); }
+            try
+            {
+                // 원격에서 파일을 만들고 내용을 쓰는 사이에 읽으면 빈 파일 → 내용이 들어오고 2초 지난 뒤에만 읽는다
+                var fi = new FileInfo(CmdPath);
+                if (fi.Length == 0 || (DateTime.Now - fi.LastWriteTime).TotalSeconds < 2.0) return;
+                lines = File.ReadAllLines(CmdPath);
+                File.Delete(CmdPath);
+            }
             catch { return; }
 
             foreach (var raw in lines)
@@ -109,6 +118,15 @@ namespace KnifeWar.Diagnostics
                             PlayerTarget();
                             if (!EditorApplication.ExecuteMenuItem("KnifeWar/배포/테스트 서버 묶음 올리기")) Debug.LogError("[claude-cmd] 서버 묶음 메뉴를 못 찾음");
                             break;
+                        case "nettest":
+                            NetTestStart(build: true);
+                            break;
+                        case "nettest_nobuild":
+                            NetTestStart(build: false);
+                            break;
+                        case "nettest_report":
+                            NetTestReport();
+                            break;
                         default:
                             Debug.LogWarning($"[claude-cmd] 모르는 명령: {cmd}");
                             break;
@@ -139,6 +157,72 @@ namespace KnifeWar.Diagnostics
             else
                 Debug.LogError($"[claude-cmd] 빌드 실패 {path}: {s.result}, 오류 {s.totalErrors}개");
             if (server) PlayerTarget();   // 서버 빌드 뒤 에디터가 서버 모드로 남지 않게
+        }
+
+        // ---------------- 자동 네트워크 테스트 ----------------
+
+        static string ClientDir => Path.GetFullPath("Builds/Client");
+        static string ClientExe => Path.Combine(ClientDir, "KnifeWar.exe");
+        static string NetTestPath => Path.Combine(Path.GetDirectoryName(CmdPath), "claude_nettest.txt");
+
+        /// <summary>데디 서버 1 + 봇 클라 3 (전부 창 없이). 경기는 2선승이라 길어야 5~6분. 끝나면 nettest_report.</summary>
+        static void NetTestStart(bool build)
+        {
+            NetTestKill();
+            if (build) Build(BuildTarget.StandaloneWindows64, "Builds/Client/KnifeWar.exe", false);
+            if (!File.Exists(ClientExe)) { Debug.LogError("[claude-cmd] 게임 빌드가 없음: " + ClientExe); return; }
+            foreach (var f in Directory.GetFiles(ClientDir, "kw_log_*.txt")) { try { File.Delete(f); } catch { } }
+
+            var pids = new System.Collections.Generic.List<int>();
+            int Start(string kw)
+            {
+                var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(ClientExe,
+                    $"-batchmode -nographics -kw \"{kw}\"") { UseShellExecute = true, WorkingDirectory = ClientDir });
+                return p?.Id ?? -1;
+            }
+            pids.Add(Start("server 7777 rounds 2"));
+            System.Threading.Thread.Sleep(2500);
+            for (int i = 0; i < 3; i++) pids.Add(Start("connect 127.0.0.1 7777 lag 50 bot"));
+            File.WriteAllText(NetTestPath, $"started {DateTime.Now:HH:mm:ss}\npids {string.Join(",", pids)}\n");
+            Debug.Log($"[claude-cmd] nettest 시작: 서버 + 봇 클라 3 (pids {string.Join(",", pids)}). 5분쯤 뒤 nettest_report");
+        }
+
+        static void NetTestKill()
+        {
+            try
+            {
+                foreach (var p in System.Diagnostics.Process.GetProcessesByName("KnifeWar"))
+                {
+                    try { p.Kill(); } catch { }
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>로그 요약: 오류·예외·잘못된 패킷은 전부, 접속·라운드·킬·경기 끝은 표시. 그리고 프로세스 정리.</summary>
+        static void NetTestReport()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"report {DateTime.Now:HH:mm:ss}");
+            string[] keys = { "launch:", "서버 시작", "접속 완료", "현재 상태 수신", "round ", "live", "RoundEnd", "MatchEnd", "kill ", "remote player", "입장 거부", "버전 불일치", "잘못된 패킷", "Exception", "[Error]", "[Exception]", "[Warning]", "(client) ping", "접속 종료", "연결 끊김", "corrections=" };
+            foreach (var f in Directory.GetFiles(ClientDir, "kw_log_*.txt"))
+            {
+                var lines = File.ReadAllLines(f);
+                sb.AppendLine($"==== {Path.GetFileName(f)} ({lines.Length} lines)");
+                int shown = 0;
+                foreach (var line in lines)
+                {
+                    bool hit = false;
+                    foreach (var k in keys) if (line.Contains(k)) { hit = true; break; }
+                    if (!hit) continue;
+                    if (line.Contains("[Warning]") && line.Contains("Input Manager")) continue;
+                    sb.AppendLine(line.Length > 300 ? line.Substring(0, 300) : line);
+                    if (++shown > 400) { sb.AppendLine("... (more)"); break; }
+                }
+            }
+            NetTestKill();
+            File.WriteAllText(NetTestPath, sb.ToString());
+            Debug.Log($"[claude-cmd] nettest 보고서: {NetTestPath} ({sb.Length} chars), 프로세스 정리됨");
         }
 
         /// <summary>에디터 빌드 대상을 Windows 일반 게임으로 되돌림.</summary>

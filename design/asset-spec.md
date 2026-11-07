@@ -63,14 +63,26 @@
 
 수백 마리를 한 번에 그리므로 **뼈 없는 고정 메시**. 걷는 느낌은 게임이 흔들어서 낸다 (나중에 VAT로 교체 가능).
 
-| 파일 이름 | 종류 | 크기(높이) | 폴리곤 | 텍스처 |
+| 파일 이름 | 종류 (카드) | 크기(높이) | 폴리곤 | 텍스처 |
 |---|---|---|---|---|
-| `monster_0_grunt.fbx` | 졸병 (빠르고 약함, 근접) | 약 1.2m, 폭 0.8m | 1k~2k | 512 |
-| `monster_1_tank.fbx` | 탱커 (느리고 단단, 근접) | 약 1.8m, 폭 1.2m | 2k~3k | 512 |
-| `monster_2_ranged.fbx` | 원거리 (약함, 2.5m 밖에서 공격) | 약 1.1m, 폭 0.6m | 1k~2k | 512 |
+| `monster_0_footman.fbx` | 졸병 — 창 든 보병, 빠르고 약함 | 약 1.2m, 폭 0.8m | 1k~2k | 512 |
+| `monster_1_shield.fbx` | 방패병 — 큰 방패, 느리고 단단 | 약 1.6m, 폭 1.2m | 2k~3k | 512 |
+| `monster_2_archer.fbx` | 궁수 — 활, 2.5m 밖에서 공격 | 약 1.1m, 폭 0.6m | 1k~2k | 512 |
+| `monster_3_ogre.fbx` | 오우거 — 거대, 느리고 한 방이 큼 | 약 2.6m, 폭 1.6m | 3k~5k | 1024 |
+| `monster_4_twinogre.fbx` | 트윈헤드 오우거 — 머리 둘, 더 크고 공격이 빠름 | 약 2.9m, 폭 1.8m | 3k~5k | 1024 |
+| `monster_5_deathknight.fbx` | 데스나이트 — 검은 갑옷·대검·망토, 빠름 | 약 2.1m, 폭 1.0m | 2k~4k | 1024 |
+| `monster_6_firegolem.fbx` | 화염 골렘 — 용암 바위 몸, 발광 균열 (볼케이노 카드로만 등장) | 약 2.8m, 폭 1.8m | 3k~5k | 1024 + `_Emission` |
 
-- 텍스처는 **팀별 두 벌** (`_blue`, `_red`) 또는 `_TeamMask`
+- 텍스처는 **팀별 두 벌** (`_blue`, `_red`) 또는 `_TeamMask` (화염 골렘은 팀 색 없이 용암색 한 벌)
 - 자세는 **걷는 중간 자세** 한 장면으로 고정
+- 반지름(판정)은 게임이 따로 가짐: 졸병 0.4 · 방패 0.6 · 궁수 0.3 · 오우거 0.8 · 트윈헤드 0.9 · 데스나이트 0.5 · 골렘 0.9m — 모델 폭을 여기에 맞춰 주면 보이는 대로 맞는다
+
+### 건물 (왕이 카드로 자기 성 1층 양옆에 짓는다)
+
+| 파일 이름 | 내용 | 규격 |
+|---|---|---|
+| `building_barracks.fbx` | 병영 — 12초마다 졸병이 나오는 막사 + 팀 깃발 | 바닥 2×2m, 높이 3m 이하 |
+| `building_manawell.fbx` | 마나 우물 — 푸른 빛 도는 우물 | 바닥 1.5×1.5m, 높이 2m 이하, `_Emission` |
 
 ## 4. 맵
 
@@ -81,7 +93,9 @@
 | `bridge_straight.fbx` | 길 바닥 조각 | 길이 **4m** 단위, 폭은 중앙길 기준 (확정 후), 윗면 높이 0 |
 | `bridge_curve_90.fbx` | 굽은 길 조각 | 위와 같은 폭 |
 | `bridge_rail.fbx` | 난간·가장자리 장식 | 4m 단위, 사람 허리 높이 이하(밖이 보여야 함) |
-| `base_blue.fbx` / `base_red.fbx` | 양쪽 진영 (왕이 서는 곳) | 약 12×12m 바닥 + 성문·깃발 |
+| `castle_blue.fbx` / `castle_red.fbx` | 양 끝 2층 작은 성. **1층 홀**(성문 안 5m, 소환수가 나오는 곳) → **경사로 7m**(3.5m 올라감) → **2층 왕의 방**(6m 깊이) | 폭 18m, 깊이 17.5m(성문~뒷벽), 2층 높이 3.5m — 수치는 `MapLayout` 과 같아야 함 |
+| `table_king.fbx` + `cards_scatter.fbx` | 2층 가운데 뒤쪽 왕의 테이블 (1.6×2.6m, 높이 0.8m) + 흩어진 카드·덱 | 테이블 위가 0.8m |
+| `throne.fbx` | 2층 뒷벽 왕좌 | 1×1.2m |
 | `env_backdrop.fbx` | 멀리 보이는 성·절벽·하늘섬 (키아트 분위기) | 판정 없음, 폴리곤 자유(LOD 2단계) |
 | `skybox_*.png` | 하늘 6면 또는 HDR 1장 | 2048 |
 
@@ -93,13 +107,14 @@
 | 파일 이름 | 크기 | 내용 |
 |---|---|---|
 | `icon_class_knight.png` / `icon_class_king.png` | 256×256 | 직업 선택 |
-| `icon_monster_0/1/2.png` | 128×128 | 소환 버튼 |
-| `icon_buff_speed.png` | 128×128 | 기사 이동속도 버프 |
+| `card_art_<이름>.png` ×10 | **512×288** (16:9) | 카드 그림 10장: `footman` 졸병 · `shield` 방패병 · `archer` 궁수 · `ogre` 오우거 · `twinogre` 트윈헤드 오우거 · `deathknight` 데스나이트 · `volcano` 볼케이노(화산 지형) · `barracks` 병영 · `manawell` 마나 우물 · `warhorn` 진군의 나팔 |
+| `card_frame_summon/field/building/buff.png` | 300×424 (카드 비율 1:1.41) | 카드 테두리 4종 (종류별 색: 소환 파랑 · 필드 붉음 · 건물 갈색 · 버프 금색), 가운데 그림 자리 비움 |
+| `icon_mana.png` | 64×64 | 마나 비용 동그라미 |
 | `tier_0` ~ `tier_6.png` | 256×256 | 티어 엠블럼: 견습생 · 종자 · 기사 · 기사단장 · 성기사 · 근위대장 · 왕의 검 |
 | `tier_placement.png` | 256×256 | 배치 중 |
 | `crosshair.png` | 64×64 | 가운데 조준점 (흰색, 투명 배경) |
 | `hitmarker.png` / `hitmarker_kill.png` | 64×64 | 맞힘 / 처치 표시 |
-| `killfeed_slash/stab/head/backstab.png` | 48×48 | 킬 알림 아이콘 |
+| `killfeed_slash/stab/monster/fall.png` | 48×48 | 킬 알림 아이콘 (부위·뒤치기 구분 없음) |
 | `portrait_knight/king.png` | 512×512 | 파티 카드 얼굴 자리 |
 | `map_loading.jpg` | 1920×1080 | 경기 로딩 화면 |
 
@@ -126,10 +141,17 @@
 ### 왕 · 몬스터
 | 파일 이름 | 개수 | 길이 | 내용 |
 |---|---|---|---|
-| `summon_0/1/2.wav` | 3 | 0.8초 | 졸병·탱커·원거리 소환 |
-| `buff_cast.wav` | 1 | 1초 | 버프 시전 |
-| `monster_attack_0/1/2.wav` | 각 2 | 0.3초 | 몬스터 공격 |
-| `monster_death_0/1/2.wav` | 각 2 | 0.5초 | 몬스터 죽음 |
+| `card_play.wav` | 1 | 0.4초 | 카드 내려놓기 (종이 + 마법 반짝) |
+| `card_draw.wav` | 1 | 0.3초 | 다음 카드 뽑힘 |
+| `card_fail.wav` | 1 | 0.3초 | 마나 부족·상한 (둔탁하게) |
+| `summon_0~6.wav` | 7 | 0.8초 | 몬스터 7종 소환 (큰 놈일수록 낮고 무겁게) |
+| `volcano_start.wav` | 1 | 3초 | 볼케이노 발동 (땅울림 + 폭발) |
+| `volcano_loop.wav` | 1 | 10초 루프 | 화산 지형 배경음 (낮은 울림, 스테레오) |
+| `build_place.wav` | 1 | 0.8초 | 병영·우물 짓기 |
+| `barracks_spawn.wav` | 1 | 0.5초 | 병영에서 졸병 나옴 |
+| `warhorn.wav` | 1 | 1.5초 | 진군의 나팔 |
+| `monster_attack_0~6.wav` | 각 2 | 0.3초 | 몬스터 공격 |
+| `monster_death_0~6.wav` | 각 2 | 0.5초 | 몬스터 죽음 |
 | `king_down.wav` | 1 | 2초 | 왕 쓰러짐 (라운드 끝 신호, 크고 웅장하게) |
 
 ### 라운드 · UI
