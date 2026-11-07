@@ -140,6 +140,7 @@ namespace KnifeWar.EditorTools
                 return;
             }
             string err = _task.IsFaulted ? Short((_task.Exception?.InnerException ?? _task.Exception)?.ToString()) : _task.Result;
+            if (_lastImageModel != null) EditorPrefs.SetString("kw.artgen.model", _lastImageModel);
             if (!string.IsNullOrEmpty(err)) Debug.LogError($"[artgen] {_current.Name} 실패: {err}");
             else if (_step == null || _step == "import")
             {
@@ -185,7 +186,7 @@ namespace KnifeWar.EditorTools
             {
                 // 옆·뒤 모습 (동작 추적용): 정면 그림을 참조로 같은 디자인 유지
                 if (!secrets.TryGetValue("OPENAI_API_KEY", out var okey2) || okey2.Length < 10) return "OPENAI_API_KEY 없음 (Deploy/secrets.env)";
-                string model = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m2) && m2.Length > 0 ? m2 : _lastImageModel ?? "gpt-image-2";
+                string model = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m2) && m2.Length > 0 ? m2 : _lastImageModel ?? UnityEditor.EditorPrefs.GetString("kw.artgen.model", "gpt-image-2.5-flare");
                 const string viewBase = "The SAME character as the attached image: identical design, proportions, armor, colors and details. {0}, orthographic camera, same neutral A-pose, same scale and height, entire body visible with margin, isolated single object on a plain transparent background, even shadowless lighting, no ground shadow.";
                 if (force || !File.Exists(side))
                 {
@@ -231,6 +232,13 @@ namespace KnifeWar.EditorTools
         /// <summary>참조 이미지 + 프롬프트 → 새 이미지 (images/edits). 같은 캐릭터의 다른 각도용.</summary>
         static string EditImage(string key, string model, string refPng, string prompt, string outPng)
         {
+            string e = EditImage(key, model, refPng, prompt, outPng, true);
+            if (e != null && e.Contains("background")) e = EditImage(key, model, refPng, prompt, outPng, false);   // 투명 배경 미지원 모델
+            return e;
+        }
+
+        static string EditImage(string key, string model, string refPng, string prompt, string outPng, bool transparent)
+        {
             var form = new MultipartFormDataContent();   // req 가 같이 정리함 (두 번 Dispose 하면 Mono 에서 NRE)
             var img = new ByteArrayContent(File.ReadAllBytes(refPng));
             img.Headers.ContentType = new MediaTypeHeaderValue("image/png");
@@ -239,7 +247,7 @@ namespace KnifeWar.EditorTools
             form.Add(new StringContent(prompt), "prompt");
             form.Add(new StringContent("1024x1024"), "size");
             form.Add(new StringContent("medium"), "quality");
-            form.Add(new StringContent("transparent"), "background");
+            if (transparent) form.Add(new StringContent("transparent"), "background");
             form.Add(new StringContent("png"), "output_format");
             using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/images/edits") { Content = form };
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
