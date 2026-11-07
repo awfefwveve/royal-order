@@ -352,6 +352,10 @@ namespace KnifeWar.EditorTools
             var r = GlbImporter.Import(glbAbs, dir, job.Name, job.Height, job.Yaw);
             if (r.Error != null) throw new Exception(r.Error);
             Debug.Log($"[artgen] {job.Name}: 메시 {r.Mesh.vertexCount} 정점 / 원래 키 {r.RawHeight:F2} → {job.Height}m, yaw {job.Yaw}, 텍스처 {(r.Albedo ? "O" : "X")} 노멀 {(r.Normal ? "O" : "X")}");
+            // 동작(영상→DINO)용 참조: 3D 모델 그대로 정면·옆 렌더 (원화를 따로 그리지 않음 → 디자인 100% 일치, 공짜)
+            RenderView(r.Mesh, r.Material, Path.Combine(ProjectRoot, dir, job.Name + "_render_front.png"), 0f);
+            RenderView(r.Mesh, r.Material, Path.Combine(ProjectRoot, dir, job.Name + "_render_side.png"), -90f);
+            Debug.Log($"[artgen] {job.Name}: 정면·옆 렌더 저장 ({dir}/{job.Name}_render_front.png, _render_side.png)");
 
             var skin = AssetDatabase.LoadAssetAtPath<SkinSet>(SkinPath);
             if (skin == null)
@@ -381,6 +385,70 @@ namespace KnifeWar.EditorTools
             }
             EditorUtility.SetDirty(skin);
             AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>메시를 투명 배경 1024×1024 로 렌더 (직교 카메라, 부드러운 스튜디오 조명). yaw: 모델을 돌리는 각도 (-90 = 오른쪽 옆모습).</summary>
+        static void RenderView(Mesh mesh, Material mat, string outPng, float yaw)
+        {
+            const int Size = 1024;
+            const int Layer = 31;
+            var root = new GameObject("ArtGenRender") { hideFlags = HideFlags.HideAndDontSave };
+            var go = new GameObject("Model") { hideFlags = HideFlags.HideAndDontSave, layer = Layer };
+            go.transform.SetParent(root.transform);
+            go.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            go.AddComponent<MeshRenderer>().sharedMaterial = mat;
+            var b = mesh.bounds;
+            float h = b.size.y;
+
+            var lights = new List<Light>();
+            void AddLight(Vector3 euler, float intensity, Color c)
+            {
+                var lg = new GameObject("L") { hideFlags = HideFlags.HideAndDontSave };
+                lg.transform.SetParent(root.transform);
+                lg.transform.rotation = Quaternion.Euler(euler);
+                var l = lg.AddComponent<Light>(); l.type = LightType.Directional; l.intensity = intensity; l.color = c; l.cullingMask = 1 << Layer; l.shadows = LightShadows.None;
+                lights.Add(l);
+            }
+            AddLight(new Vector3(25f, 155f, 0f), 1.25f, new Color(1f, 0.97f, 0.92f));   // 앞 위 키 라이트
+            AddLight(new Vector3(10f, -30f, 0f), 0.55f, new Color(0.8f, 0.86f, 1f));    // 뒤 림 라이트
+            AddLight(new Vector3(-20f, 200f, 0f), 0.35f, Color.white);                  // 아래 채움
+
+            var cg = new GameObject("C") { hideFlags = HideFlags.HideAndDontSave };
+            cg.transform.SetParent(root.transform);
+            var cam = cg.AddComponent<Camera>();
+            cam.orthographic = true;
+            cam.orthographicSize = h * 0.55f;
+            cam.transform.position = new Vector3(0f, h * 0.5f, 10f);
+            cam.transform.rotation = Quaternion.Euler(0f, 180f, 0f);   // +Z 에서 모델 앞(+Z)을 봄
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            cam.cullingMask = 1 << Layer;
+            cam.nearClipPlane = 0.1f; cam.farClipPlane = 40f;
+
+            var amb = RenderSettings.ambientLight; var ambMode = RenderSettings.ambientMode;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.32f, 0.33f, 0.36f);
+            var rt = RenderTexture.GetTemporary(Size, Size, 24, RenderTextureFormat.ARGB32);
+            rt.antiAliasing = 4;
+            try
+            {
+                cam.targetTexture = rt;
+                cam.Render();
+                var prev = RenderTexture.active; RenderTexture.active = rt;
+                var tex = new Texture2D(Size, Size, TextureFormat.RGBA32, false);
+                tex.ReadPixels(new Rect(0, 0, Size, Size), 0, 0); tex.Apply();
+                RenderTexture.active = prev;
+                File.WriteAllBytes(outPng, tex.EncodeToPNG());
+                UnityEngine.Object.DestroyImmediate(tex);
+            }
+            finally
+            {
+                cam.targetTexture = null;
+                RenderTexture.ReleaseTemporary(rt);
+                RenderSettings.ambientLight = amb; RenderSettings.ambientMode = ambMode;
+                UnityEngine.Object.DestroyImmediate(root);
+            }
         }
 
         // ---------------- 보정값 (tuning.json) ----------------
