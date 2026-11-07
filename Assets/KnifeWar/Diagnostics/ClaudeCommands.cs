@@ -124,6 +124,9 @@ namespace KnifeWar.Diagnostics
                         case "nettest_nobuild":
                             NetTestStart(build: false);
                             break;
+                        case "nettest_backend":   // 백엔드(테스트 설정, 18080) + 데디 서버(백엔드 연결) + 매칭 클라 3 → 결과 보고·MMR 까지
+                            NetTestStart(build: false, backend: true);
+                            break;
                         case "nettest_report":
                             NetTestReport();
                             break;
@@ -165,8 +168,17 @@ namespace KnifeWar.Diagnostics
         static string ClientExe => Path.Combine(ClientDir, "KnifeWar.exe");
         static string NetTestPath => Path.Combine(Path.GetDirectoryName(CmdPath), "claude_nettest.txt");
 
-        /// <summary>데디 서버 1 + 봇 클라 3 (전부 창 없이). 경기는 2선승이라 길어야 5~6분. 끝나면 nettest_report.</summary>
-        static void NetTestStart(bool build)
+        const string TestBackendUrl = "http://127.0.0.1:18080";
+        const string TestServerSecret = "nettest-server-secret-only-for-local-test-0000";
+        static string TestBackendDir => Path.GetFullPath("Backend/test");
+        static string BackendBuildDll => Path.GetFullPath("Backend/build/KnifeWar.Backend.dll");
+        static int _backendPid = -1;
+
+        /// <summary>
+        /// 데디 서버 1 + 봇 클라 3 (전부 창 없이). 경기는 2선승이라 길어야 5~6분. 끝나면 nettest_report.
+        /// backend=true: 테스트용 백엔드(18080, 파일 저장, 15초 뒤 봇 채움)를 먼저 띄우고, 서버는 백엔드에 등록, 클라는 매칭으로 들어간다.
+        /// </summary>
+        static void NetTestStart(bool build, bool backend = false)
         {
             NetTestKill();
             if (build) Build(BuildTarget.StandaloneWindows64, "Builds/Client/KnifeWar.exe", false);
@@ -180,11 +192,38 @@ namespace KnifeWar.Diagnostics
                     $"-batchmode -nographics -kw \"{kw}\"") { UseShellExecute = true, WorkingDirectory = ClientDir });
                 return p?.Id ?? -1;
             }
-            pids.Add(Start("server 7777 rounds 2"));
-            System.Threading.Thread.Sleep(2500);
-            for (int i = 0; i < 3; i++) pids.Add(Start("connect 127.0.0.1 7777 lag 50 bot"));
-            File.WriteAllText(NetTestPath, $"started {DateTime.Now:HH:mm:ss}\npids {string.Join(",", pids)}\n");
-            Debug.Log($"[claude-cmd] nettest 시작: 서버 + 봇 클라 3 (pids {string.Join(",", pids)}). 5분쯤 뒤 nettest_report");
+            if (backend)
+            {
+                if (!File.Exists(BackendBuildDll)) { Debug.LogError("[claude-cmd] 백엔드 빌드가 없음: " + BackendBuildDll); return; }
+                if (!File.Exists(Path.Combine(TestBackendDir, "appsettings.json"))) { Debug.LogError("[claude-cmd] 테스트 백엔드 설정이 없음: Backend/test/appsettings.json"); return; }
+                try { Directory.Delete(Path.Combine(TestBackendDir, "data"), true); } catch { }   // 매번 깨끗한 저장소
+                var bp = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("dotnet", $"\"{BackendBuildDll}\"")
+                {
+                    UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = TestBackendDir,
+                    RedirectStandardOutput = true, RedirectStandardError = true,
+                });
+                _backendPid = bp?.Id ?? -1;
+                var blog = Path.Combine(TestBackendDir, "backend_log.txt");
+                File.WriteAllText(blog, "");
+                if (bp != null)
+                {
+                    bp.OutputDataReceived += (_, e) => { if (e.Data != null) lock (blog) File.AppendAllText(blog, e.Data + "\n"); };
+                    bp.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (blog) File.AppendAllText(blog, "ERR " + e.Data + "\n"); };
+                    bp.BeginOutputReadLine(); bp.BeginErrorReadLine();
+                }
+                System.Threading.Thread.Sleep(4000);
+                pids.Add(Start($"server 7777 backend {TestBackendUrl} secret {TestServerSecret} region kr address 127.0.0.1 rounds 2"));
+                System.Threading.Thread.Sleep(3000);
+                for (int i = 1; i <= 3; i++) pids.Add(Start($"match backend {TestBackendUrl} name Tester{i} id nettest{i} lag 50 bot"));
+            }
+            else
+            {
+                pids.Add(Start("server 7777 rounds 2"));
+                System.Threading.Thread.Sleep(2500);
+                for (int i = 0; i < 3; i++) pids.Add(Start("connect 127.0.0.1 7777 lag 50 bot"));
+            }
+            File.WriteAllText(NetTestPath, $"started {DateTime.Now:HH:mm:ss} backend={backend}\npids {string.Join(",", pids)} backendPid={_backendPid}\n");
+            Debug.Log($"[claude-cmd] nettest 시작 (backend={backend}): 서버 + 봇 클라 3 (pids {string.Join(",", pids)}). 5분쯤 뒤 nettest_report");
         }
 
         static void NetTestKill()
@@ -195,8 +234,24 @@ namespace KnifeWar.Diagnostics
                 {
                     try { p.Kill(); } catch { }
                 }
+                if (_backendPid > 0)
+                {
+                    try { System.Diagnostics.Process.GetProcessById(_backendPid).Kill(); } catch { }
+                    _backendPid = -1;
+                }
             }
             catch { }
+        }
+
+        static string HttpGet(string url, string header = null, string value = null)
+        {
+            try
+            {
+                using var c = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                if (header != null) c.DefaultRequestHeaders.Add(header, value);
+                return c.GetStringAsync(url).GetAwaiter().GetResult();
+            }
+            catch (Exception e) { return "ERR " + e.Message; }
         }
 
         /// <summary>로그 요약: 오류·예외·잘못된 패킷은 전부, 접속·라운드·킬·경기 끝은 표시. 그리고 프로세스 정리.</summary>
@@ -218,6 +273,21 @@ namespace KnifeWar.Diagnostics
                     if (line.Contains("[Warning]") && line.Contains("Input Manager")) continue;
                     sb.AppendLine(line.Length > 300 ? line.Substring(0, 300) : line);
                     if (++shown > 400) { sb.AppendLine("... (more)"); break; }
+                }
+            }
+            // 백엔드 흐름이면: 리더보드(경기 수·MMR 반영)와 서버 목록, 백엔드 로그 꼬리
+            if (_backendPid > 0)
+            {
+                sb.AppendLine("==== backend /leaderboard/kr");
+                sb.AppendLine(HttpGet(TestBackendUrl + "/leaderboard/kr"));
+                sb.AppendLine("==== backend /admin/servers");
+                sb.AppendLine(HttpGet(TestBackendUrl + "/admin/servers", "X-Server-Secret", TestServerSecret));
+                var blog = Path.Combine(TestBackendDir, "backend_log.txt");
+                if (File.Exists(blog))
+                {
+                    var bl = File.ReadAllLines(blog);
+                    sb.AppendLine($"==== backend_log.txt ({bl.Length} lines, last 60)");
+                    for (int i = Math.Max(0, bl.Length - 60); i < bl.Length; i++) sb.AppendLine(bl[i]);
                 }
             }
             NetTestKill();
