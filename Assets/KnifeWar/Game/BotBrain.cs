@@ -17,6 +17,9 @@ namespace KnifeWar.Game
         float _nextSummon;
         float _nextBuff;
         int _target = -1;
+        int _voteRound = -1;      // 이번 준비 단계에서 희망·투표를 냈는지
+        float _voteAt;
+        bool _wished, _voted;
 
         public PlayerClass PreferredClass;
 
@@ -38,12 +41,27 @@ namespace KnifeWar.Game
 
         public PlayerIntent Think(MatchController m, float now, float dt)
         {
-            var i = new PlayerIntent { Yaw = _me.Yaw, Pitch = _me.Pitch, Summon = -1, PickClass = -1 };
+            var i = new PlayerIntent { Yaw = _me.Yaw, Pitch = _me.Pitch, Summon = -1, PickClass = -1, Vote = -1 };
             var phase = m.Round.Phase;
 
             if (phase == RoundPhase.Select)
             {
-                i.PickClass = (sbyte)PreferredClass;
+                // 투표 라운드: 왕을 하고 싶은 봇은 희망, 모두 1~4초 뒤 같은 팀 후보 중 한 명에게 투표 (사람이 후보면 사람 우선)
+                if (!m.Round.VoteRoundNow) return i;
+                if (_voteRound != m.Round.RoundNumber) { _voteRound = m.Round.RoundNumber; _wished = _voted = false; _voteAt = now + Rand(1f, 4f); }
+                if (!_wished && PreferredClass == PlayerClass.King) { _wished = true; i.PickClass = 1; return i; }
+                if (!_voted && now >= _voteAt)
+                {
+                    int pick = -1, n = 0;
+                    for (int p = 0; p < MatchController.MaxPlayers; p++)
+                    {
+                        if (m.Avatars[p].Team != _me.Team || !m.Round.Connected[p] || !m.Round.IsCandidate(p)) continue;
+                        bool human = p == m.HumanIndex && !m.HumanIsBot;
+                        if (human) { pick = p; break; }
+                        if (_rng.Next(++n) == 0) pick = p;
+                    }
+                    if (pick >= 0) { _voted = true; i.Vote = (sbyte)pick; }
+                }
                 return i;
             }
             if (phase != RoundPhase.Live || !_me.Alive) return i;

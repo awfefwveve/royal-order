@@ -40,7 +40,10 @@ namespace KnifeWar.Core
 
     /// <summary>
     /// 발로란트식 라운드 진행 (서버 전용, 넷코드 독립).
-    /// - 준비 단계에서 각자 기사/왕 선택, 왕은 팀당 1명. 안 고르면 이전 라운드 직업 유지.
+    /// - 왕은 팀원 투표로 뽑는다. 1라운드와 그 뒤 3라운드마다(1, 4, 7, …) 준비 단계에 투표.
+    ///   준비 단계에서 "왕 희망"(후보)을 켜고, 팀원은 후보 중 한 명에게 투표. 가장 많은 표가 왕.
+    ///   무표·동점이면: 1라운드는 희망자 중 무작위(희망자가 없으면 팀원 중 무작위), 그 뒤는 이전 왕이 그대로.
+    ///   투표가 없는 라운드는 왕 유지. 왕이 나갔으면 그 라운드 시작 때 무작위로 새 왕.
     /// - 라운드 중 부활 없음.
     /// - 승리: 상대 왕이 죽으면 즉시 라운드 승리. 왕이 없는 팀은 전멸로 판정.
     ///   시간 초과 시 생존자 많은 팀, 같으면 무승부(점수 없음).
@@ -62,12 +65,23 @@ namespace KnifeWar.Core
         public readonly bool[] Connected;
         public readonly bool[] Alive;
         public readonly PlayerClass[] Class;
-        readonly PlayerClass?[] _pick;
+        readonly PlayerClass?[] _pick;      // 준비 단계: King = 왕 희망(후보)
+        readonly int[] _vote;               // 준비 단계: 투표한 팀원 칸 (-1 = 안 함)
         readonly bool[] _kingAtStart;
+        readonly Random _rng;
+
+        /// <summary>왕 투표를 하는 라운드 간격 (1, 4, 7, …).</summary>
+        public const int VoteEveryRounds = 3;
+        public static bool IsVoteRound(int round) => round >= 1 && (round - 1) % VoteEveryRounds == 0;
+        public bool VoteRoundNow => Phase == RoundPhase.Select && IsVoteRound(RoundNumber);
+        /// <summary>다음에 왕 투표가 있는 라운드 번호.</summary>
+        public int NextVoteRound => RoundNumber <= 0 ? 1 : ((RoundNumber - 1) / VoteEveryRounds + 1) * VoteEveryRounds + 1;
 
         public event Action<RoundPhase> PhaseChanged;
 
-        public RoundRules(RoundConfig config, int tickRate)
+        public RoundRules(RoundConfig config, int tickRate) : this(config, tickRate, Environment.TickCount) { }
+
+        public RoundRules(RoundConfig config, int tickRate, int seed)
         {
             Config = config;
             TickRate = tickRate;
@@ -77,24 +91,53 @@ namespace KnifeWar.Core
             Alive = new bool[MaxPlayers];
             Class = new PlayerClass[MaxPlayers];
             _pick = new PlayerClass?[MaxPlayers];
+            _vote = new int[MaxPlayers];
             _kingAtStart = new bool[MaxPlayers];
-            for (int i = 0; i < MaxPlayers; i++) Team[i] = (byte)(i < config.PlayersPerTeam ? 0 : 1);
+            _rng = new Random(seed);
+            for (int i = 0; i < MaxPlayers; i++) { Team[i] = (byte)(i < config.PlayersPerTeam ? 0 : 1); _vote[i] = -1; }
         }
 
         public int SecondsLeft(int tick) => Math.Max(0, (PhaseEndTick - tick + TickRate - 1) / TickRate);
 
-        /// <summary>준비 단계에서만 받는다. 팀원에게 실시간으로 보여줄 값은 GetPick으로 읽는다.</summary>
+        /// <summary>
+        /// 투표 라운드의 준비 단계에서만: King = 왕 희망(후보 등록), Knight = 희망 취소.
+        /// 실제 왕은 라운드 시작 때 투표 결과로 정해진다.
+        /// </summary>
         public bool PickClass(int player, PlayerClass c)
         {
-            if (Phase != RoundPhase.Select || !Connected[player]) return false;
-            if (c == PlayerClass.King)
-                for (int q = 0; q < Team.Length; q++)
-                    if (q != player && Team[q] == Team[player] && GetPick(q) == PlayerClass.King) return false;   // 왕은 팀당 1명
+            if (!VoteRoundNow || player < 0 || player >= MaxPlayers || !Connected[player]) return false;
             _pick[player] = c;
             return true;
         }
 
+        /// <summary>투표 라운드의 준비 단계에서만: 같은 팀 후보에게 한 표 (다시 누르면 바꿈, -1 이면 취소).</summary>
+        public bool Vote(int player, int target)
+        {
+            if (!VoteRoundNow || player < 0 || player >= MaxPlayers || !Connected[player]) return false;
+            if (target < 0) { _vote[player] = -1; return true; }
+            if (target >= MaxPlayers || !Connected[target] || Team[target] != Team[player] || !IsCandidate(target)) return false;
+            _vote[player] = target;
+            return true;
+        }
+
+        /// <summary>준비 단계 표시용: 후보면 King, 아니면 Knight (투표가 없는 라운드는 현재 직업).</summary>
         public PlayerClass GetPick(int player) => _pick[player] ?? Class[player];
+        public bool IsCandidate(int player) => _pick[player] == PlayerClass.King;
+        public int VoteOf(int player) => _vote[player];
+
+        public int VoteCount(int candidate)
+        {
+            int n = 0;
+            for (int i = 0; i < MaxPlayers; i++) if (Connected[i] && _vote[i] == candidate) n++;
+            return n;
+        }
+
+        /// <summary>지금 그 팀의 왕 칸 (-1 = 없음).</summary>
+        public int KingOf(int team)
+        {
+            for (int i = 0; i < MaxPlayers; i++) if (Team[i] == team && Connected[i] && Class[i] == PlayerClass.King) return i;
+            return -1;
+        }
 
         public void Kill(int player)
         {
@@ -160,19 +203,63 @@ namespace KnifeWar.Core
         void StartSelect(int tick)
         {
             RoundNumber++;
-            for (int i = 0; i < MaxPlayers; i++) _pick[i] = null;
+            for (int i = 0; i < MaxPlayers; i++) { _pick[i] = null; _vote[i] = -1; }
             SetPhase(RoundPhase.Select, tick + Config.SelectSeconds * TickRate);
         }
 
         void StartLive(int tick)
         {
+            for (int team = 0; team < 2; team++)
+            {
+                int king = IsVoteRound(RoundNumber) ? ResolveVote(team) : KingOf(team);
+                if (king < 0) king = RandomTeammate(team, true);   // 왕이 나갔거나 없음 → 무작위
+                for (int i = 0; i < MaxPlayers; i++)
+                    if (Team[i] == team) Class[i] = i == king ? PlayerClass.King : PlayerClass.Knight;
+            }
             for (int i = 0; i < MaxPlayers; i++)
             {
-                if (_pick[i].HasValue) Class[i] = _pick[i].Value;
+                _pick[i] = null;
+                _vote[i] = -1;
                 Alive[i] = Connected[i];
                 _kingAtStart[i] = Alive[i] && Class[i] == PlayerClass.King;
             }
             SetPhase(RoundPhase.Live, tick + Config.RoundSeconds * TickRate);
+        }
+
+        /// <summary>투표 결과 → 왕 칸. 최다 득표(단독)면 그 사람, 아니면 1라운드는 희망자 중 무작위, 그 뒤는 이전 왕.</summary>
+        int ResolveVote(int team)
+        {
+            int best = -1, bestVotes = 0; bool tie = false;
+            for (int i = 0; i < MaxPlayers; i++)
+            {
+                if (Team[i] != team || !Connected[i] || !IsCandidate(i)) continue;
+                int v = VoteCount(i);
+                if (v > bestVotes) { best = i; bestVotes = v; tie = false; }
+                else if (v == bestVotes && v > 0) tie = true;
+            }
+            if (best >= 0 && bestVotes > 0 && !tie) return best;
+            if (RoundNumber == 1) return RandomTeammate(team, true);
+            int prev = KingOf(team);
+            return prev >= 0 ? prev : RandomTeammate(team, true);
+        }
+
+        /// <summary>희망자 중 무작위, 없으면(preferCandidates) 팀원 전체 중 무작위. 아무도 없으면 -1.</summary>
+        int RandomTeammate(int team, bool preferCandidates)
+        {
+            int n = 0;
+            for (int pass = preferCandidates ? 0 : 1; pass < 2; pass++)
+            {
+                n = 0;
+                for (int i = 0; i < MaxPlayers; i++)
+                    if (Team[i] == team && Connected[i] && (pass == 1 || IsCandidate(i))) n++;
+                if (n > 0)
+                {
+                    int k = _rng.Next(n);
+                    for (int i = 0; i < MaxPlayers; i++)
+                        if (Team[i] == team && Connected[i] && (pass == 1 || IsCandidate(i)) && k-- == 0) return i;
+                }
+            }
+            return -1;
         }
 
         void EndRound(int tick, int winner)
@@ -205,8 +292,9 @@ namespace KnifeWar.Core
             }
         }
 
-        /// <summary>클라이언트: 직업 선택 현황 반영 (준비 단계에 팀원 선택을 실시간으로 보여주기 위해).</summary>
+        /// <summary>클라이언트: 후보·투표 현황 반영 (준비 단계에 팀원 선택을 실시간으로 보여주기 위해).</summary>
         public void ApplyPickMirror(int player, PlayerClass pick) => _pick[player] = pick;
+        public void ApplyVoteMirror(int player, int vote) => _vote[player] = vote;
 
         void SetPhase(RoundPhase phase, int endTick)
         {

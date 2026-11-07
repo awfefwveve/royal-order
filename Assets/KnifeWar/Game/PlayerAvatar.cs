@@ -15,7 +15,8 @@ namespace KnifeWar.Game
         public KnifeAttack Attack;  // 이번에 누른 공격
         public sbyte Summon;        // -1 = 없음, 0~2 = 몬스터 종류
         public bool Buff;
-        public sbyte PickClass;     // -1 = 없음, 0 = 기사, 1 = 왕
+        public sbyte PickClass;     // -1 = 없음, 0 = 희망 취소(기사), 1 = 왕 희망 (투표 라운드 준비 단계)
+        public sbyte Vote;          // -1 = 없음, 0~11 = 그 칸에 투표, 127 = 투표 취소
     }
 
     /// <summary>예측·보정에 필요한 이동 상태.</summary>

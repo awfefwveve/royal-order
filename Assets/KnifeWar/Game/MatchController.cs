@@ -27,7 +27,8 @@ namespace KnifeWar.Game
         public float Yaw, Pitch, Crouch;
         public bool Alive;
         public PlayerClass Class;
-        public PlayerClass Pick;
+        public PlayerClass Pick;    // 준비 단계: King = 왕 희망(후보)
+        public sbyte Vote;          // 준비 단계: 투표한 칸 (-1 없음)
         public int Hp;
         public byte TeleportSeq;
     }
@@ -102,6 +103,7 @@ namespace KnifeWar.Game
         readonly sbyte[] _pendingSummon = new sbyte[MaxPlayers];
         readonly bool[] _pendingBuff = new bool[MaxPlayers];
         readonly sbyte[] _pendingPick = new sbyte[MaxPlayers];
+        readonly sbyte[] _pendingVote = new sbyte[MaxPlayers];
         readonly int[] _viewTick = new int[MaxPlayers];
         readonly float[] _viewAlpha = new float[MaxPlayers];
         readonly int[] _monsterViewTick = new int[MaxPlayers];
@@ -451,16 +453,13 @@ namespace KnifeWar.Game
                 }
             }
 
-            // 직업 선택
+            // 왕 희망·투표 (투표 라운드 준비 단계에서만 받는다)
             for (int p = 0; p < MaxPlayers; p++)
             {
-                if (_pendingPick[p] >= 0 && !Round.PickClass(p, (PlayerClass)_pendingPick[p]) && _pendingPick[p] == (int)PlayerClass.King
-                    && Round.Phase == RoundPhase.Select && tick - _kingTakenMsgTick[p] >= TickRate)   // 1초에 한 번만 알림
-                {
-                    _kingTakenMsgTick[p] = tick;
-                    Emit(new GameEvent { Type = GameEventType.Message, A = p, B = (int)GameMessage.KingTaken });
-                }
+                if (_pendingPick[p] >= 0) Round.PickClass(p, (PlayerClass)Mathf.Clamp(_pendingPick[p], 0, 1));
+                if (_pendingVote[p] >= 0) Round.Vote(p, _pendingVote[p] == VoteCancel ? -1 : _pendingVote[p]);
                 _pendingPick[p] = -1;
+                _pendingVote[p] = -1;
             }
 
             // 추락
@@ -579,9 +578,11 @@ namespace KnifeWar.Game
             if (i.Summon >= 0) _pendingSummon[p] = i.Summon;
             if (i.Buff) _pendingBuff[p] = true;
             if (i.PickClass >= 0) _pendingPick[p] = i.PickClass;
+            if (i.Vote >= 0) _pendingVote[p] = i.Vote;
         }
 
-        readonly int[] _kingTakenMsgTick = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Repeat(int.MinValue / 2, 32));
+        /// <summary>Intent.Vote 에 이 값이면 투표 취소.</summary>
+        public const sbyte VoteCancel = 127;
         void Emit(in GameEvent e) => TickEvents.Add(e);
 
         static GameMessage SummonMessage(WizardRules.SummonResult r)
@@ -612,7 +613,7 @@ namespace KnifeWar.Game
                         Spawn(p);
                     }
                     Leaks[0] = Leaks[1] = 0;
-                    LockCursor();
+                    SelectCursor();
                     break;
 
                 case RoundPhase.Live:
@@ -848,11 +849,13 @@ namespace KnifeWar.Game
                 intent.Summon = _pendingSummon[HumanIndex];
                 intent.Buff = _pendingBuff[HumanIndex];
                 intent.PickClass = _pendingPick[HumanIndex];
+                intent.Vote = _pendingVote[HumanIndex];
             }
             _pendingAttack[HumanIndex] = KnifeAttack.None;
             _pendingSummon[HumanIndex] = -1;
             _pendingBuff[HumanIndex] = false;
             _pendingPick[HumanIndex] = -1;
+            _pendingVote[HumanIndex] = -1;
 
             double view = _clientClock - InterpDelayTicks;
             var cmd = new NetCommand
@@ -907,7 +910,8 @@ namespace KnifeWar.Game
             if (prevPhase != phase)
             {
                 Feedback?.OnPhase(phase, lastWinner, Human != null ? Human.Team : (byte)0);
-                if (phase == RoundPhase.Select) { Monsters.Clear(); LockCursor(); }
+                if (phase == RoundPhase.Select) { Monsters.Clear(); SelectCursor(); }
+                else if (phase == RoundPhase.Live) LockCursor();
             }
             if (buffEnd0 > 0) Wizard.TeamBuffs[0].Apply(BuffId, buffEnd0); else Wizard.TeamBuffs[0].Clear();
             if (buffEnd1 > 0) Wizard.TeamBuffs[1].Apply(BuffId, buffEnd1); else Wizard.TeamBuffs[1].Clear();
@@ -919,6 +923,7 @@ namespace KnifeWar.Game
                 Round.Class[p] = ps.Class;
                 Round.Alive[p] = ps.Alive;
                 Round.ApplyPickMirror(p, ps.Pick);
+                Round.ApplyVoteMirror(p, ps.Vote);
                 var a = Avatars[p];
                 a.SetClass(ps.Class);
                 if (a.Alive != ps.Alive) a.SetAlive(ps.Alive);
@@ -1012,6 +1017,18 @@ namespace KnifeWar.Game
             Cursor.visible = false;
         }
 
+        /// <summary>준비 단계: 투표 라운드면 커서를 풀어 후보 카드를 누르게, 아니면 잠근 채로.</summary>
+        void SelectCursor()
+        {
+            if (HumanIndex < 0 || _human.Blocked || HumanIsBot) return;
+            if (RoundRules.IsVoteRound(Round.RoundNumber)) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
+            else LockCursor();
+        }
+
+        /// <summary>화면(HUD)에서 누른 왕 희망·투표를 다음 명령에 싣는다.</summary>
+        public void RequestPick(PlayerClass c) { if (HumanIndex >= 0) _pendingPick[HumanIndex] = (sbyte)c; }
+        public void RequestVote(int slot) { if (HumanIndex >= 0) _pendingVote[HumanIndex] = slot < 0 ? VoteCancel : (sbyte)slot; }
+
         public void ShowMessage(string msg)
         {
             LastSummonMessage = msg;
@@ -1089,27 +1106,45 @@ namespace KnifeWar.Game
             }
         }
 
+        /// <summary>눈앞(1인칭) 칼을 새 모델로 바꾼다. 위치·회전은 기존 칼 자리 그대로.</summary>
+        static void ReplaceEyeKnife(PlayerAvatar a, Transform k)
+        {
+            var old = a.Knife;
+            k.name = "Knife";
+            foreach (var col in k.GetComponentsInChildren<Collider>(true)) Destroy(col);
+            foreach (var r in k.GetComponentsInChildren<Renderer>(true)) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            if (old != null)
+            {
+                k.localPosition = old.localPosition;
+                k.localRotation = old.localRotation;
+                Destroy(old.gameObject);
+            }
+            a.Knife = k;
+        }
+
         /// <summary>외형 설정(SkinSet) 적용. 서버는 부르지 않는다. 판정·충돌은 건드리지 않음.</summary>
         void ApplySkin(SkinSet skin, int humanSlot)
         {
-            if (skin == null) return;
+            if (skin == null)
+            {
+                // 스킨이 없으면 코드로 만든 기사·왕 + 1인칭 칼
+                for (int p = 0; p < MaxPlayers; p++)
+                {
+                    var a = Avatars[p];
+                    a.Model = AvatarModel.AttachProcedural(a);
+                    ReplaceEyeKnife(a, ProceduralParts.Knife("Knife", a.Eye));
+                    if (p != humanSlot) a.HideEyeKnife = true;   // 남은 손에 든 칼로 보임
+                    a.RefreshKnife();
+                }
+                return;
+            }
             for (int p = 0; p < MaxPlayers; p++)
             {
                 var a = Avatars[p];
-                if (skin.KnifeView != null && a.Knife != null)
-                {
-                    var old = a.Knife;
-                    var k = Instantiate(skin.KnifeView, a.Eye, false).transform;
-                    k.name = "Knife";
-                    foreach (var col in k.GetComponentsInChildren<Collider>(true)) Destroy(col);
-                    foreach (var r in k.GetComponentsInChildren<Renderer>(true)) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                    k.localPosition = old.localPosition;
-                    k.localRotation = old.localRotation;
-                    a.Knife = k;
-                    Destroy(old.gameObject);
-                }
+                if (skin.KnifeView != null && a.Knife != null) ReplaceEyeKnife(a, Instantiate(skin.KnifeView, a.Eye, false).transform);
+                else if (a.Knife != null) ReplaceEyeKnife(a, ProceduralParts.Knife("Knife", a.Eye));
                 a.Model = AvatarModel.Attach(a, skin);
-                if (a.Model != null && skin.KnifeInHand != null && p != humanSlot) a.HideEyeKnife = true;
+                if (a.Model != null && (skin.KnifeInHand != null || a.Model.IsProcedural) && p != humanSlot) a.HideEyeKnife = true;
                 a.RefreshKnife();
             }
             if (skin.Environment != null) Instantiate(skin.Environment).name = "Environment (Skin)";

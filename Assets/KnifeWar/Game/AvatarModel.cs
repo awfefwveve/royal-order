@@ -23,16 +23,31 @@ namespace KnifeWar.Game
         int _hSpeed, _hCrouch, _hGrounded, _hDead, _hSlash, _hStab, _hSummon;
         Vector3 _lastPos;
         float _speed, _vy;
+        ProceduralRig _procKnight, _procKing;   // 스킨 모델이 없을 때 코드로 만든 임시 외형
 
-        public bool HasModel => _models[0] != null;
+        public bool HasModel => _models[0] != null || _procKnight != null;
+        public bool IsProcedural => _procKnight != null;
 
         public static AvatarModel Attach(PlayerAvatar a, SkinSet skin)
         {
-            if (skin == null) return null;
-            var knight = skin.CharacterPrefab(a.Team, PlayerClass.Knight);
-            if (knight == null) return null;
+            var knight = skin != null ? skin.CharacterPrefab(a.Team, PlayerClass.Knight) : null;
+            if (knight == null) return AttachProcedural(a);
             var m = a.gameObject.AddComponent<AvatarModel>();
             m.Init(a, skin);
+            return m;
+        }
+
+        /// <summary>진짜 모델이 없을 때: 코드로 만든 기사·왕 (ProceduralRig).</summary>
+        public static AvatarModel AttachProcedural(PlayerAvatar a)
+        {
+            var m = a.gameObject.AddComponent<AvatarModel>();
+            m._a = a;
+            m._procKnight = new ProceduralRig(a.Visual, a.Team, false);
+            m._procKing = new ProceduralRig(a.Visual, a.Team, true);
+            if (a.Body != null) a.Body.gameObject.SetActive(false);
+            if (a.WizardHat != null) { Destroy(a.WizardHat); a.WizardHat = null; }
+            m._lastPos = a.Visual.position;
+            m.Refresh();
             return m;
         }
 
@@ -102,6 +117,14 @@ namespace KnifeWar.Game
         public void Refresh()
         {
             if (_a == null) return;
+            if (_procKnight != null)
+            {
+                // 죽어도 바로 숨기지 않고 쓰러지는 자세로 남긴다 (다음 라운드에 다시 일어남)
+                bool king = _a.Class == PlayerClass.King;
+                _procKnight.SetActive(!king);
+                _procKing.SetActive(king);
+                return;
+            }
             int cls = _a.Class == PlayerClass.King && _models[1] != null ? 1 : 0;
             for (int i = 0; i < 2; i++)
                 if (_models[i] != null) _models[i].SetActive(_a.Alive && i == cls);
@@ -111,14 +134,25 @@ namespace KnifeWar.Game
         /// <summary>내 캐릭터: 몸은 안 보이고 그림자만.</summary>
         public void SetShadowsOnly()
         {
+            _procKnight?.SetShadowsOnly();
+            _procKing?.SetShadowsOnly();
             for (int i = 0; i < 2; i++)
                 if (_models[i] != null)
                     foreach (var r in _models[i].GetComponentsInChildren<Renderer>(true))
                         r.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
         }
 
-        public void Swing(KnifeAttack type) => Trigger(Current, type == KnifeAttack.Stab ? _hStab : _hSlash);
-        public void Summon() => Trigger(Current, _hSummon);
+        public void Swing(KnifeAttack type)
+        {
+            if (_procKnight != null) { _procKnight.PlayAttack(type); return; }
+            Trigger(Current, type == KnifeAttack.Stab ? _hStab : _hSlash);
+        }
+
+        public void Summon()
+        {
+            if (_procKing != null) { _procKing.PlaySummon(); return; }
+            Trigger(Current, _hSummon);
+        }
 
         int Current => _a.Class == PlayerClass.King && _models[1] != null ? 1 : 0;
 
@@ -133,6 +167,13 @@ namespace KnifeWar.Game
             float flat = new Vector2(d.x, d.z).magnitude / dt;
             _speed = Mathf.Lerp(_speed, flat, Mathf.Clamp01(dt * 12f));
             _vy = Mathf.Lerp(_vy, d.y / dt, Mathf.Clamp01(dt * 12f));
+
+            if (_procKnight != null)
+            {
+                var rig = _a.Class == PlayerClass.King ? _procKing : _procKnight;
+                rig.Animate(dt, _speed, _a.Crouch, _a.Alive, Mathf.Abs(_vy) < 1.5f);
+                return;
+            }
 
             int c = Current;
             var anim = _anims[c];

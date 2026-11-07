@@ -107,7 +107,7 @@ namespace KnifeWar.Game
             if (GameSettings.ShowFps) Label(new Rect(w - 110, 8, 100, 22), Mathf.RoundToInt(_fps) + " FPS", _small, Color.white);
 
             // 커서 안내
-            if (!_menu && !ShowcaseMode && Cursor.lockState != CursorLockMode.Locked && r.Phase != RoundPhase.MatchEnd)
+            if (!_menu && !ShowcaseMode && Cursor.lockState != CursorLockMode.Locked && r.Phase != RoundPhase.MatchEnd && r.Phase != RoundPhase.Select)
                 Label(new Rect(0, h * 0.5f + 60, w, 30), L.T("click_to_start"), _center, Color.white);
 
             if (_menu && _settings) { if (!SettingsWindow.Draw(w, h)) _settings = false; }
@@ -180,26 +180,70 @@ namespace KnifeWar.Game
         void DrawSelect(RoundRules r, float w, float h)
         {
             var me = _m.Human;
-            float pw = 560, ph = 300, x = w * 0.5f - pw * 0.5f, y = h * 0.22f;
-            Rect(x, y, pw, ph, new Color(0, 0, 0, 0.65f));
-            Label(new Rect(x, y + 10, pw, 40), L.T("class_select", r.SecondsLeft(_m.ServerTick)), _big, Color.white);
+            if (me == null) return;
+            if (!r.VoteRoundNow)
+            {
+                // 투표 없는 라운드: 왕 유지 안내만
+                float pw0 = 560, ph0 = 150, x0 = w * 0.5f - pw0 * 0.5f, y0 = h * 0.22f;
+                Rect(x0, y0, pw0, ph0, new Color(0, 0, 0, 0.65f));
+                Label(new Rect(x0, y0 + 10, pw0, 40), L.T("select_ready", r.RoundNumber, r.SecondsLeft(_m.ServerTick)), _big, Color.white);
+                int king = r.KingOf(me.Team);
+                Label(new Rect(x0, y0 + 60, pw0, 30), L.T("select_king_is", king >= 0 ? _m.Avatars[king].DisplayName : "-"), _center, new Color(1f, 0.85f, 0.45f));
+                Label(new Rect(x0, y0 + 96, pw0, 30), L.T("select_next_vote", r.NextVoteRound), _center, new Color(1, 1, 1, 0.75f));
+                return;
+            }
 
-            var mine = r.GetPick(me.Index);
-            Option(new Rect(x + 30, y + 70, 240, 90), L.T("knight_title"), L.T("knight_desc"), mine == PlayerClass.Knight);
-            Option(new Rect(x + 290, y + 70, 240, 90), L.T("wizard_title"), L.T("wizard_desc"), mine == PlayerClass.King);
+            // ---- 왕 투표 ----
+            float pw = 680, ph = 470, x = w * 0.5f - pw * 0.5f, y = h * 0.14f;
+            Rect(x, y, pw, ph, new Color(0, 0, 0, 0.72f));
+            Label(new Rect(x, y + 10, pw, 40), L.T("vote_title", r.SecondsLeft(_m.ServerTick)), _big, Color.white);
+            Label(new Rect(x + 24, y + 54, pw - 48, 48), L.T(r.RoundNumber == 1 ? "vote_hint_first" : "vote_hint_again"), _small, new Color(1, 1, 1, 0.8f));
 
-            // 팀원 선택 현황 (실시간)
-            string line = "";
-            int knights = 0, wizards = 0;
+            // 희망 버튼
+            bool cand = r.IsCandidate(me.Index);
+            var btn = ButtonStyle();
+            GUI.backgroundColor = cand ? new Color(0.95f, 0.75f, 0.3f) : new Color(0.3f, 0.55f, 1f);
+            if (GUI.Button(new Rect(x + 24, y + 108, 300, 44), cand ? L.T("vote_withdraw") : L.T("vote_wish"), btn))
+                _m.RequestPick(cand ? PlayerClass.Knight : PlayerClass.King);
+            GUI.backgroundColor = Color.white;
+            Label(new Rect(x + 340, y + 108, pw - 364, 44), L.T("vote_keys"), _small, new Color(1, 1, 1, 0.7f));
+
+            // 후보 목록 (우리 팀)
+            Label(new Rect(x + 24, y + 166, pw - 48, 28), L.T("vote_candidates"), _mid, Color.white);
+            int myVote = r.VoteOf(me.Index);
+            float row = y + 200; int shown = 0;
             for (int p = 0; p < MatchController.MaxPlayers; p++)
             {
-                if (_m.Avatars[p].Team != me.Team) continue;
-                var c = r.GetPick(p);
-                if (c == PlayerClass.Knight) knights++; else wizards++;
-                line += $"{_m.Avatars[p].DisplayName}:{(c == PlayerClass.Knight ? L.T("knight") : L.T("wizard"))}  ";
+                if (_m.Avatars[p].Team != me.Team || !r.Connected[p] || !r.IsCandidate(p)) continue;
+                bool mine = myVote == p;
+                Rect(x + 24, row, pw - 48, 40, mine ? new Color(0.95f, 0.75f, 0.3f, 0.28f) : new Color(1, 1, 1, 0.07f));
+                Label(new Rect(x + 36, row + 6, 300, 30), (p == me.Index ? "★ " : "") + _m.Avatars[p].DisplayName, _mid, Color.white);
+                int votes = r.VoteCount(p);
+                Label(new Rect(x + 340, row + 6, 140, 30), L.T("vote_count", votes), _mid, new Color(1f, 0.85f, 0.45f));
+                GUI.backgroundColor = mine ? new Color(0.95f, 0.75f, 0.3f) : Color.white;
+                if (GUI.Button(new Rect(x + pw - 164, row + 4, 130, 32), mine ? L.T("vote_voted") : L.T("vote_do"), btn))
+                    _m.RequestVote(mine ? -1 : p);
+                GUI.backgroundColor = Color.white;
+                row += 44; shown++;
             }
-            Label(new Rect(x + 20, y + 180, pw - 40, 30), L.T("team_counts", knights, wizards), _mid, Color.white);
-            Label(new Rect(x + 20, y + 212, pw - 40, 60), line, _small, new Color(1, 1, 1, 0.85f));
+            if (shown == 0) Label(new Rect(x + 24, row, pw - 48, 40), L.T("vote_none"), _small, new Color(1, 1, 1, 0.6f));
+
+            // 팀원 투표 현황 (누가 누구에게)
+            string line = "";
+            for (int p = 0; p < MatchController.MaxPlayers; p++)
+            {
+                if (_m.Avatars[p].Team != me.Team || !r.Connected[p]) continue;
+                int v = r.VoteOf(p);
+                line += $"{_m.Avatars[p].DisplayName} → {(v >= 0 ? _m.Avatars[v].DisplayName : "·")}   ";
+            }
+            Label(new Rect(x + 24, y + ph - 60, pw - 48, 50), line, _small, new Color(1, 1, 1, 0.65f));
+        }
+
+        GUIStyle _btn;
+        GUIStyle ButtonStyle()
+        {
+            if (_btn == null) _btn = new GUIStyle(GUI.skin.button) { fontSize = 17, fontStyle = FontStyle.Bold };
+            return _btn;
         }
 
         void Option(Rect rc, string title, string desc, bool selected)

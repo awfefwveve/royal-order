@@ -31,7 +31,7 @@ namespace KnifeWar.Net
 
     public static class NetProtocol
     {
-        public const ushort Version = 5;   // 5: 몬스터 상태에 좌우 위치 추가
+        public const ushort Version = 6;   // 6: 왕 투표 (명령 Vote, 상태 Vote)
         public const ushort DefaultPort = 7777;
         public const int MaxCommandsPerPacket = 4;
         public const int CorrectionsPerSnapshot = 16;
@@ -55,6 +55,7 @@ namespace KnifeWar.Net
             w.Byte((byte)i.Attack);
             w.SByte(i.Summon);
             w.SByte(i.PickClass);
+            w.SByte(i.Vote);
             w.Int(c.ViewTick);
             w.Byte((byte)Mathf.Clamp(Mathf.RoundToInt(c.ViewAlpha * 255f), 0, 255));
             w.Int(c.MonsterTick);
@@ -76,6 +77,7 @@ namespace KnifeWar.Net
             i.Attack = (KnifeAttack)r.Byte();
             i.Summon = r.SByte();
             i.PickClass = r.SByte();
+            i.Vote = r.SByte();
             c.Intent = i;
             c.ViewTick = r.Int();
             c.ViewAlpha = r.Byte() / 255f;
@@ -100,6 +102,7 @@ namespace KnifeWar.Net
             w.Byte(flags);
             w.Byte((byte)Mathf.Clamp(p.Hp, 0, 255));
             w.Byte(p.TeleportSeq);
+            w.SByte(p.Vote);
         }
 
         public static PlayerNetState ReadPlayer(ByteReader r)
@@ -115,6 +118,7 @@ namespace KnifeWar.Net
             p.Pick = (flags & 4) != 0 ? PlayerClass.King : PlayerClass.Knight;
             p.Hp = r.Byte();
             p.TeleportSeq = r.Byte();
+            p.Vote = r.SByte();
             return p;
         }
 

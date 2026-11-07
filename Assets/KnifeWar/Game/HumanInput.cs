@@ -22,7 +22,8 @@ namespace KnifeWar.Game
         public PlayerIntent Sample(RoundPhase phase)
         {
             if (Blocked) return Idle();
-            if (Input.GetMouseButtonDown(0) && Cursor.lockState != CursorLockMode.Locked)
+            // 투표 라운드 준비 단계는 커서로 후보를 누르므로 클릭으로 잠그지 않는다
+            if (Input.GetMouseButtonDown(0) && Cursor.lockState != CursorLockMode.Locked && phase != RoundPhase.Select)
             {
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;
@@ -44,6 +45,7 @@ namespace KnifeWar.Game
                 Pitch = _pitch,
                 Summon = -1,
                 PickClass = -1,
+                Vote = -1,
             };
 
             float x = (GameSettings.Held(Bind.Right) ? 1f : 0f) - (GameSettings.Held(Bind.Left) ? 1f : 0f);
@@ -55,6 +57,7 @@ namespace KnifeWar.Game
 
             if (phase == RoundPhase.Select)
             {
+                // 투표 라운드: 1 = 희망 취소(기사), 2 = 왕 희망. 투표는 화면의 후보 카드를 누른다
                 if (GameSettings.Down(Bind.Slot1)) i.PickClass = 0;
                 if (GameSettings.Down(Bind.Slot2)) i.PickClass = 1;
             }
@@ -73,6 +76,6 @@ namespace KnifeWar.Game
             return i;
         }
 
-        PlayerIntent Idle() => new PlayerIntent { Yaw = _yaw, Pitch = _pitch, Summon = -1, PickClass = -1 };
+        PlayerIntent Idle() => new PlayerIntent { Yaw = _yaw, Pitch = _pitch, Summon = -1, PickClass = -1, Vote = -1 };
     }
 }
