@@ -139,7 +139,7 @@ namespace KnifeWar.EditorTools
             {
                 return;
             }
-            string err = _task.IsFaulted ? (_task.Exception?.InnerException?.Message ?? _task.Exception?.Message) : _task.Result;
+            string err = _task.IsFaulted ? Short((_task.Exception?.InnerException ?? _task.Exception)?.ToString()) : _task.Result;
             if (!string.IsNullOrEmpty(err)) Debug.LogError($"[artgen] {_current.Name} 실패: {err}");
             else if (_step == null || _step == "import")
             {
@@ -187,10 +187,16 @@ namespace KnifeWar.EditorTools
                 if (!secrets.TryGetValue("OPENAI_API_KEY", out var okey2) || okey2.Length < 10) return "OPENAI_API_KEY 없음 (Deploy/secrets.env)";
                 string model = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m2) && m2.Length > 0 ? m2 : _lastImageModel ?? "gpt-image-2";
                 const string viewBase = "The SAME character as the attached image: identical design, proportions, armor, colors and details. {0}, orthographic camera, same neutral A-pose, same scale and height, entire body visible with margin, isolated single object on a plain transparent background, even shadowless lighting, no ground shadow.";
-                string e2 = EditImage(okey2, model, png, string.Format(viewBase, "Strict right side view (90 degrees)") + Style, side);
-                if (e2 != null) return "옆모습: " + e2;
-                e2 = EditImage(okey2, model, png, string.Format(viewBase, "Strict back view (180 degrees)") + Style, back);
-                if (e2 != null) return "뒷모습: " + e2;
+                if (force || !File.Exists(side))
+                {
+                    string e2 = EditImage(okey2, model, png, string.Format(viewBase, "Strict right side view (90 degrees)") + Style, side);
+                    if (e2 != null) return "옆모습: " + e2;
+                }
+                if (force || !File.Exists(back))
+                {
+                    string e2 = EditImage(okey2, model, png, string.Format(viewBase, "Strict back view (180 degrees)") + Style, back);
+                    if (e2 != null) return "뒷모습: " + e2;
+                }
             }
             if (doModel && (force || !File.Exists(glb)))
             {
@@ -315,7 +321,7 @@ namespace KnifeWar.EditorTools
             }
         }
 
-        static string Short(string s) => s == null ? "" : (s.Length > 300 ? s.Substring(0, 300) + "…" : s);
+        static string Short(string s) => s == null ? "" : (s.Length > 600 ? s.Substring(0, 600) + "…" : s);
 
         // ---------------- 넣기 (메인 스레드) ----------------
 
