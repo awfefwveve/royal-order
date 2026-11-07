@@ -231,7 +231,7 @@ namespace KnifeWar.EditorTools
         /// <summary>참조 이미지 + 프롬프트 → 새 이미지 (images/edits). 같은 캐릭터의 다른 각도용.</summary>
         static string EditImage(string key, string model, string refPng, string prompt, string outPng)
         {
-            using var form = new MultipartFormDataContent();
+            var form = new MultipartFormDataContent();   // req 가 같이 정리함 (두 번 Dispose 하면 Mono 에서 NRE)
             var img = new ByteArrayContent(File.ReadAllBytes(refPng));
             img.Headers.ContentType = new MediaTypeHeaderValue("image/png");
             form.Add(img, "image", Path.GetFileName(refPng));
@@ -281,8 +281,8 @@ namespace KnifeWar.EditorTools
         static string ImageTo3D(string key, string png, string outGlb, int faces)
         {
             string requestId;
-            using (var form = new MultipartFormDataContent())
             {
+                var form = new MultipartFormDataContent();   // req 가 같이 정리함
                 var img = new ByteArrayContent(File.ReadAllBytes(png));
                 img.Headers.ContentType = new MediaTypeHeaderValue("image/png");
                 form.Add(img, "image", Path.GetFileName(png));
