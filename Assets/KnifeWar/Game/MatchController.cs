@@ -505,9 +505,7 @@ namespace KnifeWar.Game
                 });
                 if (ev.Kill)
                 {
-                    var how = ev.Part == HitPart.Head ? KillHow.Head
-                        : ev.FromBehind ? KillHow.Backstab
-                        : ev.Attack == KnifeAttack.Stab ? KillHow.Stab : KillHow.Slash;
+                    var how = ev.Attack == KnifeAttack.Stab ? KillHow.Stab : KillHow.Slash;   // 부위·뒤치기 구분 없음
                     Kill(ev.Victim, ev.Attacker, how);
                 }
             }

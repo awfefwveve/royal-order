@@ -147,7 +147,7 @@ namespace KnifeWar.Game
             ["deck_reset"] = new[] { "기본 덱", "Default", "初期デッキ", "默认卡组" },
             ["deck_need_full"] = new[] { "8장을 채워야 저장할 수 있어요", "Fill all 8 slots to save", "8枚そろえると保存できます", "需凑满8张才能保存" },
             ["deck_open"] = new[] { "덱 편집", "Deck", "デッキ", "卡组" },
-            ["knight_keys"] = new[] { "좌클 베기 · 우클 찌르기 · 등 뒤 찌르기 즉사", "LMB slash · RMB stab · Backstab kills", "左クリック斬り · 右クリック突き · 背後突きで即死", "左键斩击 · 右键突刺 · 背刺秒杀" },
+            ["knight_keys"] = new[] { "좌클 베기 50 · 우클 찌르기 100 (어디든 즉사)", "LMB slash 50 · RMB stab 100 (one-shot anywhere)", "左クリック斬り 50 · 右クリック突き 100 (どこでも即死)", "左键斩击 50 · 右键突刺 100 (任意部位秒杀)" },
             ["buff_active"] = new[] { "진군의 나팔: 기사 이동속도 +15%", "War Horn: Knight speed +15%", "進軍のラッパ: 騎士の移動速度 +15%", "进军号角: 骑士移速 +15%" },
 
             // ---- 점수판 ----

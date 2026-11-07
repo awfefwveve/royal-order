@@ -24,8 +24,8 @@ public static class Program2 {
     { var c = Setup(); events.Clear(); Place(c, 0, 0, 0, 0); Place(c, 1, 0, 1.2f, MathF.PI); Run(c, 20);
       c.SubmitInput(0, new KnifeInput { Pressed = KnifeAttack.Slash, Yaw = 0, Pitch = 0, ViewTick = c.Tick - 13 });
       int pressTick = c.Tick; Run(c, 12);
-      Check(events.Count == 1 && events[0].Part == HitPart.Head && events[0].Damage == 80, $"정면 베기 → 머리 80 (got {(events.Count>0? events[0].Part+" "+events[0].Damage : "miss")})");
-      Check(events.Count == 1 && c.Hp[1] == 20, "체력 100 → 20");
+      Check(events.Count == 1 && events[0].Part == HitPart.Head && events[0].Damage == 50, $"정면 베기 → 머리 맞아도 50 (부위 배율 없음) (got {(events.Count>0? events[0].Part+" "+events[0].Damage : "miss")})");
+      Check(events.Count == 1 && c.Hp[1] == 50, "체력 100 → 50");
     }
     // 2. 아래 조준 → 몸통
     { var c = Setup(); events.Clear(); Place(c, 0, 0, 0, 0); Place(c, 1, 0, 1.2f, MathF.PI); Run(c, 20);
@@ -63,11 +63,22 @@ public static class Program2 {
       c.SubmitInput(0, new KnifeInput { Pressed = KnifeAttack.Slash, Yaw = 0, Pitch = 0, ViewTick = c.Tick - 120 }); Run(c, 12);
       Check(events.Count == 0, "0.9초 전 화면 요청 → 한도(250ms)로 잘려서 빗나감 (핵 방지)");
     }
-    // 7. 백스탭 즉사
+    // 7. 찌르기는 어디를 맞아도 100 = 즉사 (정면 다리 조준)
+    { var c = Setup(); events.Clear(); Place(c, 0, 0, 0, 0); Place(c, 1, 0, 1.0f, MathF.PI); Run(c, 20);
+      c.SubmitInput(0, new KnifeInput { Pressed = KnifeAttack.Stab, Yaw = 0, Pitch = -0.7f, ViewTick = c.Tick - 13 }); Run(c, 40);
+      Check(events.Count == 1 && events[0].Damage == 100 && events[0].Kill && events[0].Part != HitPart.Head, $"정면 아래(다리) 찌르기 → 100 즉사 (got {(events.Count>0? events[0].Part+" "+events[0].Damage : "miss")})");
+      Check(c.Poses[1].Alive == 0, "죽은 플레이어 Alive=0");
+    }
+    // 7-2. 뒤에서 찔러도 똑같이 100 (뒤치기 배율 없음)
     { var c = Setup(); events.Clear(); Place(c, 0, 0, 0, 0); Place(c, 1, 0, 1.0f, 0f); Run(c, 20);
       c.SubmitInput(0, new KnifeInput { Pressed = KnifeAttack.Stab, Yaw = 0, Pitch = -0.4f, ViewTick = c.Tick - 13 }); Run(c, 40);
-      Check(events.Count == 1 && events[0].FromBehind && events[0].Kill, $"등 뒤 찌르기 → 즉사 (got {(events.Count>0? events[0].Damage+" behind="+events[0].FromBehind : "miss")})");
-      Check(c.Poses[1].Alive == 0, "죽은 플레이어 Alive=0");
+      Check(events.Count == 1 && events[0].Damage == 100 && events[0].Kill, $"등 뒤 찌르기 → 100 (같음) (got {(events.Count>0? events[0].Damage.ToString() : "miss")})");
+    }
+    // 7-3. 베기 두 번 = 죽음
+    { var c = Setup(); events.Clear(); Place(c, 0, 0, 0, 0); Place(c, 1, 0, 1.2f, MathF.PI); Run(c, 20);
+      c.SubmitInput(0, new KnifeInput { Pressed = KnifeAttack.Slash, Yaw = 0, Pitch = -0.3f, ViewTick = c.Tick - 13 }); Run(c, 80);
+      c.SubmitInput(0, new KnifeInput { Pressed = KnifeAttack.Slash, Yaw = 0, Pitch = -0.3f, ViewTick = c.Tick - 13 }); Run(c, 80);
+      Check(events.Count == 2 && events[1].Kill && c.Hp[1] == 0, $"베기 2방 → 죽음 (got {events.Count} hits, hp {c.Hp[1]})");
     }
     // 8. 쿨다운
     { var c = Setup(); events.Clear(); Place(c, 0, 0, 0, 0); Place(c, 1, 0, 1.2f, MathF.PI); Run(c, 20);

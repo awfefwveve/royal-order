@@ -37,34 +37,24 @@ namespace KnifeWar.Core
     }
 
     /// <summary>
-    /// 임시 수치. 블랙스쿼드 체감에 맞춰 플레이테스트로 조정한다.
-    /// 체력 100 기준: 베기 몸통 2방, 찌르기 몸통 1방(앞 70/뒤 즉사), 머리는 더 강하게.
+    /// 칼 수치 (확정 규칙): 기사 체력 100. 베기(좌클) 50 = 2방, 찌르기(우클) 100 = 어디를 맞아도 즉사.
+    /// 부위별·뒤치기 배율은 없다 — 발끝을 맞아도 같은 데미지. (히트박스는 "맞았나"만 판단)
     /// </summary>
     public static class KnifeTuning
     {
         public const int MaxHp = 100;
+        public const int SlashDamage = 50;
+        public const int StabDamage = 100;
 
-        public static KnifeAttackDef Slash(int tickRate) => KnifeAttackDef.Make(tickRate, 1.6f, 0.30f, 50, 60, 380, 1.5f);
-        public static KnifeAttackDef Stab(int tickRate) => KnifeAttackDef.Make(tickRate, 1.4f, 0.18f, 70, 220, 820, 3f);
+        public static KnifeAttackDef Slash(int tickRate) => KnifeAttackDef.Make(tickRate, 1.6f, 0.30f, SlashDamage, 60, 380, 1f);
+        public static KnifeAttackDef Stab(int tickRate) => KnifeAttackDef.Make(tickRate, 1.4f, 0.18f, StabDamage, 220, 820, 1f);
 
-        public static float PartMultiplier(HitPart part)
-        {
-            switch (part)
-            {
-                case HitPart.Head: return 1.6f;
-                case HitPart.Chest: return 1.0f;
-                case HitPart.Stomach: return 0.95f;
-                case HitPart.Arm: return 0.75f;
-                case HitPart.Leg: return 0.7f;
-                default: return 0f;
-            }
-        }
+        /// <summary>부위 배율 없음: 맞으면 1, 빗나감(None)만 0.</summary>
+        public static float PartMultiplier(HitPart part) => part == HitPart.None ? 0f : 1f;
 
         public static int ComputeDamage(in KnifeAttackDef def, in MeleeHit hit)
         {
-            float d = def.Damage * PartMultiplier(hit.Part);
-            if (hit.FromBehind) d *= def.BackstabMultiplier;
-            return (int)math.round(d);
+            return hit.Part == HitPart.None ? 0 : def.Damage;
         }
     }
 
