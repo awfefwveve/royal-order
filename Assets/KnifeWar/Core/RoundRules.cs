@@ -150,7 +150,10 @@ namespace KnifeWar.Core
             if (!connected) Alive[player] = false; // 나가면 그 라운드는 사망 처리
         }
 
-        public void Tick(int tick)
+        /// <summary>
+        /// 한 틱 진행. tieBreak: 시간 초과인데 양 팀 생존자 수가 같을 때 승자를 정하는 함수 (예: 필드 몬스터 체력 합이 큰 팀). null·-1 이면 무승부.
+        /// </summary>
+        public void Tick(int tick, Func<int> tieBreak = null)
         {
             switch (Phase)
             {
@@ -169,7 +172,7 @@ namespace KnifeWar.Core
                     if (k0 || k1) { EndRound(tick, k0 && k1 ? -1 : (k0 ? 1 : 0)); break; }
                     int a0 = AliveCount(0), a1 = AliveCount(1);
                     if (a0 == 0 || a1 == 0) EndRound(tick, a0 == 0 && a1 == 0 ? -1 : (a0 == 0 ? 1 : 0));
-                    else if (tick >= PhaseEndTick) EndRound(tick, a0 == a1 ? -1 : (a0 > a1 ? 0 : 1));
+                    else if (tick >= PhaseEndTick) EndRound(tick, a0 == a1 ? (tieBreak?.Invoke() ?? -1) : (a0 > a1 ? 0 : 1));
                     break;
                 }
 

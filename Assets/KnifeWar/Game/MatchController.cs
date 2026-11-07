@@ -393,7 +393,7 @@ namespace KnifeWar.Game
             TickEvents.Clear();
             int tick = ServerTick;
             float dt = Time.fixedDeltaTime;
-            Round.Tick(tick);
+            Round.Tick(tick, _tieBreak ??= MonsterTieBreak);
             var phase = Round.Phase;
             if (phase != _lastPhase) OnPhaseEntered(phase);
             _lastPhase = phase;
@@ -585,6 +585,22 @@ namespace KnifeWar.Game
 
         /// <summary>Intent.Vote 에 이 값이면 투표 취소.</summary>
         public const sbyte VoteCancel = 127;
+
+        Func<int> _tieBreak;
+
+        /// <summary>시간 초과 + 생존자 수 동률: 필드에 남은 몬스터 체력 합이 큰 팀이 이긴다 (왕의 소환이 승부를 가름). 같으면 무승부.</summary>
+        int MonsterTieBreak()
+        {
+            var s = Monsters;
+            s.Complete();
+            long hp0 = 0, hp1 = 0;
+            for (int m = 0; m < s.Capacity; m++)
+            {
+                if (s.Alive[m] == 0) continue;
+                if (s.Team[m] == 0) hp0 += Math.Max(0, s.Hp[m]); else hp1 += Math.Max(0, s.Hp[m]);
+            }
+            return hp0 == hp1 ? -1 : (hp0 > hp1 ? 0 : 1);
+        }
         void Emit(in GameEvent e) => TickEvents.Add(e);
 
         static GameMessage SummonMessage(WizardRules.SummonResult r)

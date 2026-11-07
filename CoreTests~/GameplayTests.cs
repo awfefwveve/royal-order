@@ -129,6 +129,20 @@ public static class Program2 {
       r.SetConnected(7, false);
       while (r.Phase == RoundPhase.Live) r.Tick(t++);
       Check(r.Score[0] == 2, "시간 초과 → 생존자 많은 팀 득점 (나간 유저는 사망 처리)");
+      // 3라운드: 생존자 수 동률로 시간 초과 → 타이브레이크(몬스터 체력 합)로 승자
+      r.SetConnected(7, true);
+      while (r.Phase == RoundPhase.RoundEnd) r.Tick(t++);
+      while (r.Phase == RoundPhase.Select) r.Tick(t++);
+      r.Kill(0); r.Kill(6);   // 양 팀 한 명씩 → 5:5
+      int tieCalls = 0;
+      while (r.Phase == RoundPhase.Live) r.Tick(t++, () => { tieCalls++; return 1; });
+      Check(tieCalls == 1 && r.Score[1] == 1 && r.LastRoundWinner == 1, $"동률 시간 초과 → 타이브레이크 팀1 승 (calls {tieCalls}, score {r.Score[0]}:{r.Score[1]})");
+      // 타이브레이크도 동률(-1)이면 무승부
+      while (r.Phase == RoundPhase.RoundEnd) r.Tick(t++);
+      while (r.Phase == RoundPhase.Select) r.Tick(t++);
+      int s0 = r.Score[0], s1 = r.Score[1];
+      while (r.Phase == RoundPhase.Live) r.Tick(t++, () => -1);
+      Check(r.LastRoundWinner == -1 && r.Score[0] == s0 && r.Score[1] == s1, "동률 + 타이브레이크 없음 → 무승부");
     }
 
     Console.WriteLine("[왕 투표 규칙]");
