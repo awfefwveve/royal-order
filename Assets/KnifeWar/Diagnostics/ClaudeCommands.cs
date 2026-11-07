@@ -86,6 +86,12 @@ namespace KnifeWar.Diagnostics
                 Debug.Log($"[claude-cmd] {cmd}");
                 try
                 {
+                    if (cmd.StartsWith("vatimport "))   // 구운 애니메이션: vatimport 종류 파일 [windup=a,b] ...
+                    {
+                        File.WriteAllText(Path.Combine(Path.GetDirectoryName(CmdPath), "claude_vatimport.txt"), raw.Trim().Substring(10).Trim());
+                        if (!EditorApplication.ExecuteMenuItem("KnifeWar/아트/구운 애니메이션 가져오기 (Logs/claude_vatimport.txt)")) Debug.LogError("[claude-cmd] VAT 메뉴를 못 찾음");
+                        continue;
+                    }
                     if (cmd.StartsWith("videogen "))   // 동작 영상: videogen 이름 동작 [model=max|h3|seedance]
                     {
                         File.WriteAllText(Path.Combine(Path.GetDirectoryName(CmdPath), "claude_videogen.txt"), raw.Trim().Substring(9).Trim());

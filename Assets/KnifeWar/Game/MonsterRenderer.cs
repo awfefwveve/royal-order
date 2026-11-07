@@ -32,6 +32,16 @@ namespace KnifeWar.Game
         Mesh _arrowMesh;
         readonly RenderParams[] _arrowRp = new RenderParams[2];
 
+        // 구운 애니메이션 (VAT): 종류별 구간·속도, 마리별 상태 시작 시각 → 프레임
+        NativeArray<byte> _hasVat;        // 종류별
+        NativeArray<float> _vatFps, _windupSec;
+        NativeArray<int4> _vatIW, _vatSR; // (idle.x, idle.y, windup.x, windup.y), (strike.x, strike.y, recover.x, recover.y)
+        NativeArray<byte> _prevState;     // 마리별
+        NativeArray<float> _stateStart, _attackEnd;
+        NativeArray<float> _frameOut;     // [group * Capacity + n]
+        readonly MaterialPropertyBlock[] _vatProps = new MaterialPropertyBlock[Groups];
+        readonly float[] _frameBuf = new float[Batch];
+
         public void Init(MatchController m)
         {
             _m = m;
@@ -58,6 +68,29 @@ namespace KnifeWar.Game
                 _lift[t] = 0f;
             }
 
+            int capM = m.Monsters.Capacity;
+            _hasVat = new NativeArray<byte>(Types, Allocator.Persistent);
+            _vatFps = new NativeArray<float>(Types, Allocator.Persistent);
+            _windupSec = new NativeArray<float>(Types, Allocator.Persistent);
+            _vatIW = new NativeArray<int4>(Types, Allocator.Persistent);
+            _vatSR = new NativeArray<int4>(Types, Allocator.Persistent);
+            _prevState = new NativeArray<byte>(capM, Allocator.Persistent);
+            _stateStart = new NativeArray<float>(capM, Allocator.Persistent);
+            _attackEnd = new NativeArray<float>(capM, Allocator.Persistent);
+            for (int i = 0; i < capM; i++) { _prevState[i] = 255; _attackEnd[i] = -100f; }
+            for (int t = 0; t < Types; t++)
+            {
+                var a = skin != null && skin.MonsterAnim != null && t < skin.MonsterAnim.Length ? skin.MonsterAnim[t] : null;
+                _windupSec[t] = m.Monsters.Defs.IsCreated && t < m.Monsters.Defs.Length ? m.Monsters.Defs[t].WindupTicks / (float)MatchController.TickRate : 0.6f;
+                if (a == null || a.Mesh == null || a.Material == null || a.Frames <= 0) continue;
+                _hasVat[t] = 1;
+                _mesh[t] = a.Mesh;
+                _scale[t] = new float3(1f, 1f, 1f);
+                _vatFps[t] = a.Fps > 0f ? a.Fps : 24f;
+                _vatIW[t] = new int4(a.Idle.x, a.Idle.y, a.Windup.x, a.Windup.y);
+                _vatSR[t] = new int4(a.Strike.x, a.Strike.y, a.Recover.x, a.Recover.y);
+            }
+
             var bounds = new Bounds(Vector3.zero, new Vector3(400f, 60f, 60f));
             Material fire = null;
             for (int team = 0; team < 2; team++)
@@ -74,6 +107,8 @@ namespace KnifeWar.Game
                     Material use = mat;
                     MaterialPropertyBlock props = null;
                     var typed = skin != null && skin.MonsterMaterial != null && t < skin.MonsterMaterial.Length ? skin.MonsterMaterial[t] : null;
+                    var anim = skin != null && skin.MonsterAnim != null && t < skin.MonsterAnim.Length ? skin.MonsterAnim[t] : null;
+                    if (anim != null && anim.Mesh != null && anim.Material != null && anim.Frames > 0) typed = anim.Material;
                     if (typed != null)
                     {
                         // 종류별 텍스처 재질: 팀 색은 살짝 물들이기만 (파랑 팀 차갑게, 빨강 팀 붉게). 골렘은 팀 색 없음
@@ -86,6 +121,11 @@ namespace KnifeWar.Game
                     }
                     else if (t == MonsterDefs.FireGolem && (skin == null || skin.MonsterMesh == null || t >= skin.MonsterMesh.Length || skin.MonsterMesh[t] == null))
                         use = fire ??= ProceduralMonsterMeshes.FireMaterial(mat);
+                    if (_hasVat[t] != 0)
+                    {
+                        props ??= new MaterialPropertyBlock();
+                        _vatProps[team * Types + t] = props;
+                    }
                     _rp[team * Types + t] = new RenderParams(use)
                     {
                         worldBounds = bounds,
@@ -97,6 +137,7 @@ namespace KnifeWar.Game
             }
 
             _out = new NativeArray<Matrix4x4>(m.Monsters.Capacity * Groups, Allocator.Persistent);
+            _frameOut = new NativeArray<float>(m.Monsters.Capacity * Groups, Allocator.Persistent);
             _counts = new NativeArray<int>(Groups, Allocator.Persistent);
             _arrowOut = new NativeArray<Matrix4x4>(2 * MonsterSim.MaxArrows, Allocator.Persistent);
             _arrowCounts = new NativeArray<int>(2, Allocator.Persistent);
@@ -112,9 +153,19 @@ namespace KnifeWar.Game
             if (_lift.IsCreated) _lift.Dispose();
             if (_arrowOut.IsCreated) _arrowOut.Dispose();
             if (_arrowCounts.IsCreated) _arrowCounts.Dispose();
+            if (_hasVat.IsCreated) _hasVat.Dispose();
+            if (_vatFps.IsCreated) _vatFps.Dispose();
+            if (_windupSec.IsCreated) _windupSec.Dispose();
+            if (_vatIW.IsCreated) _vatIW.Dispose();
+            if (_vatSR.IsCreated) _vatSR.Dispose();
+            if (_prevState.IsCreated) _prevState.Dispose();
+            if (_stateStart.IsCreated) _stateStart.Dispose();
+            if (_attackEnd.IsCreated) _attackEnd.Dispose();
+            if (_frameOut.IsCreated) _frameOut.Dispose();
         }
 
         bool _canDraw = true, _instancing = true;
+        static readonly int VatFrameId = Shader.PropertyToID("_VatFrame");
 
         void LateUpdate()
         {
@@ -148,6 +199,15 @@ namespace KnifeWar.Game
                 ArrowVy = s.ArrowVy,
                 ArrowOut = _arrowOut,
                 ArrowCounts = _arrowCounts,
+                HasVat = _hasVat,
+                VatFps = _vatFps,
+                WindupSec = _windupSec,
+                VatIW = _vatIW,
+                VatSR = _vatSR,
+                PrevState = _prevState,
+                StateStart = _stateStart,
+                AttackEnd = _attackEnd,
+                FrameOut = _frameOut,
             }.Run();
 
             int cap = s.Capacity;
@@ -159,12 +219,25 @@ namespace KnifeWar.Game
                 if (_instancing)
                 {
                     for (int start = 0; start < count; start += Batch)
-                        Graphics.RenderMeshInstanced(_rp[g], mesh, 0, _out, math.min(Batch, count - start), g * cap + start);
+                    {
+                        int n = math.min(Batch, count - start);
+                        var vp = _vatProps[g];
+                        if (vp != null)
+                        {
+                            NativeArray<float>.Copy(_frameOut, g * cap + start, _frameBuf, 0, n);
+                            vp.SetFloatArray(VatFrameId, _frameBuf);   // 마리별 프레임 (호출할 때 복사됨)
+                        }
+                        Graphics.RenderMeshInstanced(_rp[g], mesh, 0, _out, n, g * cap + start);
+                    }
                 }
                 else
                 {
                     // 인스턴싱이 안 되는 GPU: 한 마리씩 (느리지만 보이긴 한다)
-                    for (int i = 0; i < count; i++) Graphics.RenderMesh(_rp[g], mesh, 0, _out[g * cap + i]);
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (_vatProps[g] != null) _vatProps[g].SetFloat(VatFrameId, _frameOut[g * cap + i]);
+                        Graphics.RenderMesh(_rp[g], mesh, 0, _out[g * cap + i]);
+                    }
                 }
             }
             for (int team = 0; team < 2; team++)
@@ -197,6 +270,28 @@ namespace KnifeWar.Game
             [ReadOnly] public NativeArray<int> ArrowPos, ArrowLat, ArrowVx, ArrowVy;
             public NativeArray<Matrix4x4> ArrowOut;
             public NativeArray<int> ArrowCounts;
+            [ReadOnly] public NativeArray<byte> HasVat;
+            [ReadOnly] public NativeArray<float> VatFps, WindupSec;
+            [ReadOnly] public NativeArray<int4> VatIW, VatSR;
+            public NativeArray<byte> PrevState;
+            public NativeArray<float> StateStart, AttackEnd;
+            public NativeArray<float> FrameOut;
+
+            static float Seg(int a, int b, float u) => math.lerp(a, b, math.saturate(u));
+
+            /// <summary>구운 애니메이션 프레임: 준비는 시뮬레이션 준비 시간에 맞춰 늘리고, 타격·복귀는 원래 속도.</summary>
+            float Frame(int m, int type, byte st)
+            {
+                float fps = VatFps[type];
+                int4 iw = VatIW[type], sr = VatSR[type];
+                float t = Time - StateStart[m];
+                if (st == (byte)MonsterState.Windup && iw.w > iw.z) return Seg(iw.z, iw.w, t / math.max(0.05f, WindupSec[type]));
+                if (st == (byte)MonsterState.Attack && sr.y > sr.x) return Seg(sr.x, sr.y, t * fps / (sr.y - sr.x));
+                float since = Time - AttackEnd[m];
+                if (sr.w > sr.z && since < (sr.w - sr.z) / fps) return Seg(sr.z, sr.w, since * fps / (sr.w - sr.z));
+                if (iw.y > iw.x) return iw.x + math.fmod(Time * fps + m * 7.3f, iw.y - iw.x);   // 대기 구간 반복 (마리마다 어긋나게)
+                return iw.x;
+            }
 
             float Ground(float x)
             {
@@ -213,22 +308,30 @@ namespace KnifeWar.Game
                 var strikeTilt = quaternion.RotateX(0.25f);   // 공격: 앞으로 숙임
                 for (int m = 0; m < Capacity; m++)
                 {
-                    if (Alive[m] == 0) continue;
+                    if (Alive[m] == 0) { PrevState[m] = 255; continue; }
                     int type = math.clamp(Type[m], 0, Types - 1);
                     int team = Team[m] == 0 ? 0 : 1;
                     byte st = State[m];
+                    if (st != PrevState[m])
+                    {
+                        if (PrevState[m] == (byte)MonsterState.Attack) AttackEnd[m] = Time;
+                        if (PrevState[m] == 255) AttackEnd[m] = -100f;
+                        PrevState[m] = st; StateStart[m] = Time;
+                    }
+                    bool vat = HasVat[type] != 0;
                     bool attacking = st == (byte)MonsterState.Attack;
                     bool windup = st == (byte)MonsterState.Windup;
-                    float bob = attacking
+                    float bob = vat ? 0f : attacking
                         ? math.abs(math.sin(Time * 14f + m)) * 0.12f
                         : windup ? 0.18f : math.abs(math.sin(Time * 9f + m * 0.37f)) * 0.07f;
                     float x = Pos[m] / 1000f - LaneHalf;
                     float3 p = new float3(x, Ground(x) + Lift[type] + bob, Lat[m] / 1000f);
                     var face = team == 0 ? face0 : face1;
-                    var rot = windup ? math.mul(face, windupTilt) : attacking ? math.mul(face, strikeTilt) : face;
+                    var rot = vat ? face : windup ? math.mul(face, windupTilt) : attacking ? math.mul(face, strikeTilt) : face;
                     int g = team * Types + type;
                     int n = Counts[g];
                     Out[g * Capacity + n] = (Matrix4x4)float4x4.TRS(p, rot, Scale[type]);
+                    FrameOut[g * Capacity + n] = vat ? Frame(m, type, st) : 0f;
                     Counts[g] = n + 1;
                 }
 

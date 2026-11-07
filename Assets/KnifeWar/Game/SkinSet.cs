@@ -43,6 +43,7 @@ namespace KnifeWar.Game
         public Material MonsterTeam0;
         public Material MonsterTeam1;
         [Tooltip("종류별 텍스처 재질 (아트 생성 결과). 있으면 팀 재질 대신 이걸 쓰고 팀 색은 살짝 물들임")] public Material[] MonsterMaterial = new Material[7];
+        [Tooltip("종류별 구운 애니메이션 (정점 위치 텍스처). 있으면 MonsterMesh 대신 이걸로 움직임")] public MonsterVat[] MonsterAnim = new MonsterVat[7];
 
         [Header("건물 (0 병영, 1 마나 우물 — 발이 원점인 프리팹. 비우면 기본 상자)")]
         public GameObject[] BuildingPrefab = new GameObject[2];
@@ -106,5 +107,22 @@ namespace KnifeWar.Game
         }
 
         public bool HasWizardModel(byte team) => (team == 0 ? Team0Wizard : Team1Wizard) != null;
+    }
+
+    /// <summary>
+    /// 몬스터 한 종류의 구운 애니메이션 (VAT): 뼈 애니메이션을 프레임마다 정점 위치로 텍스처에 저장 → GPU 인스턴싱 그대로 재생.
+    /// 구간은 프레임 번호 [시작, 끝]. 비어 있으면 (0,0) → 그 상태에서 첫 프레임 정지.
+    /// </summary>
+    [System.Serializable]
+    public sealed class MonsterVat
+    {
+        public Mesh Mesh;                 // uv2.x = VAT 열 번호
+        public Material Material;         // KnifeWar/VatStandard
+        public int Frames;
+        public float Fps = 24f;
+        public Vector2Int Idle;           // 서 있기·걷기 (걷기 동작이 생기면 교체)
+        public Vector2Int Windup;         // 공격 준비 (피할 수 있게 보이는 구간)
+        public Vector2Int Strike;         // 타격
+        public Vector2Int Recover;        // 공격 뒤 원위치
     }
 }
