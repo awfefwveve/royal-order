@@ -45,6 +45,8 @@ public sealed class AccountExtra
     public List<string> FriendRequestsIn { get; set; } = new(); // 받은 친구 요청
     public List<string> FriendRequestsOut { get; set; } = new();// 보낸 친구 요청
     public string Deck { get; set; } = "";                      // 왕 카드 덱 "0,0,2,1,3,7,9,6" (비어 있으면 기본 덱)
+    public long NameChangedAt { get; set; }                     // 이름 바꾼 시각 (7일 제한)
+    public long DeletedAt { get; set; }                         // 탈퇴 시각 (0 = 정상)
 }
 
 /// <summary>덱 규칙 (게임 Core/CardDefs 와 같은 값: 8장, 카드 id 0~CardCount-1, 같은 카드 2장까지). 카드가 늘면 CardCount 를 같이 올린다.</summary>

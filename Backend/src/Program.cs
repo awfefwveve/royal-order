@@ -68,7 +68,7 @@ Account Me(Req r)
     if (!h.StartsWith("Bearer ")) return null;
     var c = tokens.ValidateSession(h[7..]);
     var a = c != null ? store.GetAccount(c.Sub) : null;
-    if (a == null || c.Ver != a.Extra.TokenVersion || a.IsBanned(TokenService.Now())) return null;
+    if (a == null || c.Ver != a.Extra.TokenVersion || a.IsBanned(TokenService.Now()) || a.Extra.DeletedAt > 0) return null;
     presence.Touch(a.Id);
     return a;
 }
@@ -454,16 +454,84 @@ http.Map("POST", "/account/name", r =>
     if (a == null) return Status(401);
     var req = r.Json<NameReq>();
     string name = CleanName(req?.Name);
+    long now = TokenService.Now();
     lock (accountLock)
     {
         if (name != a.Name)
         {
+            // 이름은 7일에 한 번 (처음 정하는 건 제한 없음)
+            long next = a.Extra.NameChangedAt + 7 * 24 * 3600;
+            if (a.Extra.NameChangedAt > 0 && now < next) return Status(429, new { error = "name_cooldown", until = next });
             a.Name = name;
             if (store.NameTagTaken(name, a.Extra.Tag)) a.Extra.Tag = NewTag(name);
+            a.Extra.NameChangedAt = now;
             store.SaveAccount(a);
         }
     }
     return Ok(Profile(a));
+});
+
+// 비밀번호 바꾸기 (자체 이메일 계정만). 다른 기기는 전부 로그아웃되고, 이 기기는 새 토큰을 받는다.
+http.Map("POST", "/account/password", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    if (a.Provider != "email") return Status(400, new { error = "not_email_account" });
+    var req = r.Json<PasswordChangeReq>();
+    if (req == null || string.IsNullOrEmpty(req.Current) || string.IsNullOrEmpty(req.Password)) return Status(400);
+    if (req.Password.Length < 8 || req.Password.Length > 128) return Status(400, new { error = "password" });
+    lock (accountLock)
+    {
+        a = store.GetAccount(a.Id);
+        if (!Passwords.Verify(req.Current, a.Extra.PasswordHash)) return Status(401, new { error = "wrong" });
+        a.Extra.PasswordHash = Passwords.Hash(req.Password);
+        a.Extra.TokenVersion++;
+        a.Extra.FailedLogins = 0;
+        store.SaveAccount(a);
+    }
+    Log($"password changed {a.Id}");
+    return Ok(Login(a));
+});
+
+// 계정 삭제(탈퇴): 바로 익명 처리. 이름·이메일·비밀번호·친구·덱을 지우고 로그인 연결을 끊는다. 전적 행은 남는다(상대 기록 보존).
+// 같은 구글/스팀 계정으로 다시 로그인하면 새 계정이 만들어진다.
+http.Map("POST", "/account/delete", r =>
+{
+    var a = Me(r);
+    if (a == null) return Status(401);
+    var req = r.Json<DeleteReq>();
+    if (a.Provider == "email")
+    {
+        if (req == null || string.IsNullOrEmpty(req.Password)) return Status(400, new { error = "password" });
+        if (!Passwords.Verify(req.Password, a.Extra.PasswordHash)) return Status(401, new { error = "wrong" });
+    }
+    else if (req == null || req.Confirm != "DELETE") return Status(400, new { error = "confirm" });
+    long now = TokenService.Now();
+    lock (accountLock)
+    {
+        a = store.GetAccount(a.Id);
+        foreach (var fid in a.Extra.Friends.Concat(a.Extra.FriendRequestsIn).Concat(a.Extra.FriendRequestsOut).Distinct().ToList())
+        {
+            var f = store.GetAccount(fid);
+            if (f == null) continue;
+            f.Extra.Friends.Remove(a.Id); f.Extra.FriendRequestsIn.Remove(a.Id); f.Extra.FriendRequestsOut.Remove(a.Id);
+            store.SaveAccount(f);
+        }
+        a.ExternalId = $"deleted:{a.Id}:{now}";
+        a.Name = "탈퇴한 사용자";
+        a.Extra.Tag = NewTag(a.Name);
+        a.Extra.Email = "";
+        a.Extra.PasswordHash = "";
+        a.Extra.EmailVerified = false;
+        a.Extra.VerifyCode = a.Extra.ResetCode = "";
+        a.Extra.Friends.Clear(); a.Extra.FriendRequestsIn.Clear(); a.Extra.FriendRequestsOut.Clear();
+        a.Extra.Deck = "";
+        a.Extra.DeletedAt = now;
+        a.Extra.TokenVersion++;
+        store.SaveAccount(a);
+    }
+    Log($"account deleted {a.Id}");
+    return Ok();
 });
 
 // 왕 카드 덱 저장 (로비 덱 편집). 규칙에 안 맞으면 400.
@@ -1089,6 +1157,8 @@ public sealed record ResetRequestReq(string Email);
 public sealed record ResetReq(string Email, string Code, string Password);
 public sealed record NameReq(string Name);
 public sealed record DeckReq(string Deck);
+public sealed record PasswordChangeReq(string Current, string Password);
+public sealed record DeleteReq(string Password = "", string Confirm = "");
 public sealed record ReportReq(string MatchId, string AccountId, string Reason, string Note);
 public sealed record BanReq(string AccountId, int Hours, string Reason);
 public sealed record IdReq(string Id);
