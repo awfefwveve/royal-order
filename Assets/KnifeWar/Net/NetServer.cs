@@ -258,7 +258,7 @@ namespace KnifeWar.Net
             for (int i = 0; i < _peers.Count; i++)
             {
                 var peer = _peers[i];
-                if (peer.Slot < 0) continue;
+                if (peer.Slot < 0 || peer.Closed) continue;   // 나간 직후(정리 전) 연결에는 보내지 않음
 
                 if (hasEvents) _net.Send(peer.Conn, true, _events, peer.SimLatencyMs);
 
@@ -359,7 +359,7 @@ namespace KnifeWar.Net
                 _w.Str(_m.Avatars[p].DisplayName);
             }
             foreach (var peer in _peers)
-                if (peer.Slot >= 0) _net.Send(peer.Conn, true, _w, peer.SimLatencyMs);
+                if (peer.Slot >= 0 && !peer.Closed) _net.Send(peer.Conn, true, _w, peer.SimLatencyMs);
         }
 
         void WriteTeamKing(int team)
