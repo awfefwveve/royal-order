@@ -40,14 +40,15 @@ namespace KnifeWar.EditorTools
             "palette: dark stone #17191D, iron #34383E, royal crimson #641E27, antique gold #A67C38, gold highlight #D9C49A. " +
             "Soft even studio lighting, subtle cool rim light. No text, no logo, no watermark, no UI, no frame.";
 
-        const string MonsterBase = "Summoned monster for a dark fantasy game: {0}. Full body, three-quarter front view facing slightly left, " +
-            "mid-stride walking pose frozen in place, entire body visible with margin, isolated single object on a plain transparent background, " +
-            "even lighting, no ground shadow. Asymmetric, menacing silhouette clearly different from human knights. " +
+        const string MonsterBase = "Summoned monster for a dark fantasy game: {0}. Full body for 3D modeling reference: strict front view, orthographic camera, " +
+            "neutral A-pose (arms 45 degrees down away from the body, legs slightly apart, standing straight, symmetric), entire body visible from head to feet with margin, " +
+            "isolated single object on a plain transparent background, even shadowless lighting, no ground shadow, no fog. Weapon held vertically close to the body. " +
+            "Asymmetric, menacing silhouette clearly different from human knights. " +
             "Hollow animated armor with faint golden rune light leaking from cracks (subtle, small areas only). Real-world human-soldier scale unless stated otherwise.";
 
         const string CharBase = "Full-body character for 3D modeling reference: {0}. Strict front view, orthographic camera, neutral A-pose " +
             "(arms 45 degrees down, palms facing the body, feet shoulder-width apart, standing straight), entire body visible from head to feet with margin, " +
-            "isolated single object on a plain transparent background, even shadowless lighting, sharp focus. Weapon NOT in hand. Cape hangs straight down behind the body.";
+            "isolated single object on a plain transparent background, even shadowless lighting, no ground shadow, no fog, sharp focus. Weapon NOT in hand. Cape hangs straight down behind the body.";
 
         const string BuildingBase = "{0}. Isolated single object on a plain transparent background, three-quarter view, even lighting, no ground shadow, entire object visible with margin.";
 
@@ -155,7 +156,9 @@ namespace KnifeWar.EditorTools
         {
             string dir = Path.Combine(root, GenDir, job.Name);
             Directory.CreateDirectory(dir);
-            string png = Path.Combine(dir, job.Name + "_concept.png");
+            string png = Path.Combine(dir, job.Name + "_front.png");
+            string side = Path.Combine(dir, job.Name + "_side.png");
+            string back = Path.Combine(dir, job.Name + "_back.png");
             string glb = Path.Combine(dir, job.Name + ".glb");
             var secrets = ReadSecrets(root);
 
@@ -170,11 +173,24 @@ namespace KnifeWar.EditorTools
                 foreach (var model in models)
                 {
                     e = GenerateImage(okey, model, job.Prompt + Style, png);
-                    if (e == null) { UnityEngine.Debug.Log($"[artgen] 원화 모델: {model}"); break; }
+                    if (e == null) { _lastImageModel = model; UnityEngine.Debug.Log($"[artgen] 원화 모델: {model}"); break; }
                     if (!e.Contains("does not exist") && !e.Contains("invalid_value")) break;
                 }
                 if (e != null) return "원화: " + e;
                 if (File.Exists(glb)) File.Delete(glb);   // 원화가 바뀌면 3D 도 다시
+                if (File.Exists(side)) File.Delete(side);
+                if (File.Exists(back)) File.Delete(back);
+            }
+            if (doImage && File.Exists(png) && (force || !File.Exists(side) || !File.Exists(back)))
+            {
+                // 옆·뒤 모습 (동작 추적용): 정면 그림을 참조로 같은 디자인 유지
+                if (!secrets.TryGetValue("OPENAI_API_KEY", out var okey2) || okey2.Length < 10) return "OPENAI_API_KEY 없음 (Deploy/secrets.env)";
+                string model = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m2) && m2.Length > 0 ? m2 : _lastImageModel ?? "gpt-image-2";
+                const string viewBase = "The SAME character as the attached image: identical design, proportions, armor, colors and details. {0}, orthographic camera, same neutral A-pose, same scale and height, entire body visible with margin, isolated single object on a plain transparent background, even shadowless lighting, no ground shadow.";
+                string e2 = EditImage(okey2, model, png, string.Format(viewBase, "Strict right side view (90 degrees)") + Style, side);
+                if (e2 != null) return "옆모습: " + e2;
+                e2 = EditImage(okey2, model, png, string.Format(viewBase, "Strict back view (180 degrees)") + Style, back);
+                if (e2 != null) return "뒷모습: " + e2;
             }
             if (doModel && (force || !File.Exists(glb)))
             {
@@ -204,6 +220,34 @@ namespace KnifeWar.EditorTools
         }
 
         static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        static string _lastImageModel;
+
+        /// <summary>참조 이미지 + 프롬프트 → 새 이미지 (images/edits). 같은 캐릭터의 다른 각도용.</summary>
+        static string EditImage(string key, string model, string refPng, string prompt, string outPng)
+        {
+            using var form = new MultipartFormDataContent();
+            var img = new ByteArrayContent(File.ReadAllBytes(refPng));
+            img.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+            form.Add(img, "image", Path.GetFileName(refPng));
+            form.Add(new StringContent(model), "model");
+            form.Add(new StringContent(prompt), "prompt");
+            form.Add(new StringContent("1024x1024"), "size");
+            form.Add(new StringContent("medium"), "quality");
+            form.Add(new StringContent("transparent"), "background");
+            form.Add(new StringContent("png"), "output_format");
+            using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/images/edits") { Content = form };
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            using var res = Http.SendAsync(req).GetAwaiter().GetResult();
+            string text = res.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            if (!res.IsSuccessStatusCode) return $"HTTP {(int)res.StatusCode}: {Short(text)}";
+            var j = MiniJson.Parse(text) as Dictionary<string, object>;
+            var data = j != null && j.TryGetValue("data", out var dl) ? dl as List<object> : null;
+            if (data == null || data.Count == 0) return "응답에 이미지 없음: " + Short(text);
+            var first = (Dictionary<string, object>)data[0];
+            if (first.TryGetValue("b64_json", out var b64) && b64 is string s) { File.WriteAllBytes(outPng, Convert.FromBase64String(s)); return null; }
+            if (first.TryGetValue("url", out var url) && url is string u) { File.WriteAllBytes(outPng, Http.GetByteArrayAsync(u).GetAwaiter().GetResult()); return null; }
+            return "응답 형식 모름: " + Short(text);
+        }
 
         static string GenerateImage(string key, string model, string prompt, string outPng)
         {
