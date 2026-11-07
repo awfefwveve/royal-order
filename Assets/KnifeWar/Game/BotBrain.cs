@@ -54,7 +54,7 @@ namespace KnifeWar.Game
                     for (int p = 0; p < MatchController.MaxPlayers; p++)
                     {
                         if (m.Avatars[p].Team != _me.Team || !m.Round.Connected[p] || !m.Round.IsCandidate(p)) continue;
-                        bool human = p == m.HumanIndex && !m.HumanIsBot;
+                        bool human = p == m.HumanIndex;   // 사람 자리(쇼케이스의 봇 조작 포함)가 후보면 그쪽으로
                         if (human) { pick = p; break; }
                         if (_rng.Next(++n) == 0) pick = p;
                     }
