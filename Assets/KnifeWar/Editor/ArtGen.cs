@@ -31,11 +31,11 @@ namespace KnifeWar.EditorTools
 
         sealed class Job
         {
-            public string Name; public Kind Kind; public int Index; public float Height; public string Prompt;
+            public string Name; public Kind Kind; public int Index; public float Height; public int Faces; public string Prompt;
             public float Yaw;   // tuning.json 으로 덮어씀
         }
 
-        const string Style = " Style: dark fantasy cinematic realism, AAA console game concept art, physically based materials, " +
+        const string Style = " Style: photorealistic, hyper-realistic cinematic realism (looks like a real object photographed in a studio, not a painting or illustration), AAA console game quality, physically based materials with realistic wear, " +
             "clear readable silhouette, restrained detail (no clutter, no excessive scratches, no excessive glow), " +
             "palette: dark stone #17191D, iron #34383E, royal crimson #641E27, antique gold #A67C38, gold highlight #D9C49A. " +
             "Soft even studio lighting, subtle cool rim light. No text, no logo, no watermark, no UI, no frame.";
@@ -43,7 +43,7 @@ namespace KnifeWar.EditorTools
         const string MonsterBase = "Summoned monster for a dark fantasy game: {0}. Full body, three-quarter front view facing slightly left, " +
             "mid-stride walking pose frozen in place, entire body visible with margin, isolated single object on a plain transparent background, " +
             "even lighting, no ground shadow. Asymmetric, menacing silhouette clearly different from human knights. " +
-            "Hollow animated armor with faint golden rune light leaking from cracks (subtle, small areas only).";
+            "Hollow animated armor with faint golden rune light leaking from cracks (subtle, small areas only). Real-world human-soldier scale unless stated otherwise.";
 
         const string CharBase = "Full-body character for 3D modeling reference: {0}. Strict front view, orthographic camera, neutral A-pose " +
             "(arms 45 degrees down, palms facing the body, feet shoulder-width apart, standing straight), entire body visible from head to feet with margin, " +
@@ -53,19 +53,19 @@ namespace KnifeWar.EditorTools
 
         static readonly Job[] Jobs =
         {
-            new Job { Name = "monster_0_footman", Kind = Kind.Monster, Index = 0, Height = 1.2f, Prompt = string.Format(MonsterBase, "a small hunched hollow footsoldier, 1.2 m tall, mismatched rusted armor plates, a long jagged spear, fast and light") },
-            new Job { Name = "monster_1_shield", Kind = Kind.Monster, Index = 1, Height = 1.6f, Prompt = string.Format(MonsterBase, "a stocky hollow shieldbearer, 1.6 m tall and wide, massive slab-like armor, one giant tower shield fused to its left arm, slow and heavy") },
-            new Job { Name = "monster_2_archer", Kind = Kind.Monster, Index = 2, Height = 1.1f, Prompt = string.Format(MonsterBase, "a thin hollow archer, 1.1 m tall slightly hunched, tattered hood over a cage-like armor torso, a bone longbow held at the side, quiver of golden-tipped arrows") },
-            new Job { Name = "monster_3_ogre", Kind = Kind.Monster, Index = 3, Height = 2.6f, Prompt = string.Format(MonsterBase, "a giant hollow ogre, 2.6 m tall, bulging plates of armor over a bloated iron body, huge club-like fists, lumbering and brutal") },
-            new Job { Name = "monster_4_twinogre", Kind = Kind.Monster, Index = 4, Height = 2.9f, Prompt = string.Format(MonsterBase, "a colossal two-headed hollow ogre, 2.9 m tall, two helmeted heads side by side snarling, four thick arms, even heavier armor") },
-            new Job { Name = "monster_5_deathknight", Kind = Kind.Monster, Index = 5, Height = 2.1f, Prompt = string.Format(MonsterBase, "a tall hollow death knight, 2.1 m, black full plate with a torn cape, a huge greatsword held low, faint purple-black rune light instead of gold") },
-            new Job { Name = "monster_6_firegolem", Kind = Kind.Monster, Index = 6, Height = 2.8f, Prompt = string.Format(MonsterBase, "a volcanic golem, 2.8 m, body of cracked black basalt with glowing lava seams, molten core visible through the chest, slow heavy stance (no team colors)") },
-            new Job { Name = "building_barracks", Kind = Kind.Building, Index = 0, Height = 3.0f, Prompt = string.Format(BuildingBase, "a small medieval field barracks for a dark fantasy game, 2 x 2 m footprint under 3 m tall, dark timber and iron, a banner pole, a doorway where soldiers march out") },
-            new Job { Name = "building_manawell", Kind = Kind.Building, Index = 1, Height = 1.5f, Prompt = string.Format(BuildingBase, "a small stone mana well for a dark fantasy game, 1.5 m across, glowing cool blue water with soft rising motes, iron frame and bucket") },
-            new Job { Name = "knight_blue", Kind = Kind.Character, Index = 0, Height = 1.83f, Prompt = string.Format(CharBase, "a Royal Order knight, male human, 183 cm, 8 heads tall, athletic build. Fitted plate armor with layered pauldrons, articulated gauntlets and sabatons, a chainmail skirt over leather. Open-face helmet with a narrow nasal guard so the face is visible: short dark hair, trimmed beard, scarred determined face. A short heraldic tabard and a knee-length cape in cold steel blue (#2F4A66), small royal crest (a stylized crown over a sword) on the chest. Belt with a knife sheath on the right hip") },
-            new Job { Name = "knight_red", Kind = Kind.Character, Index = 1, Height = 1.83f, Prompt = string.Format(CharBase, "a Royal Order knight, male human, 183 cm, 8 heads tall, athletic build. Fitted plate armor with layered pauldrons, articulated gauntlets and sabatons, a chainmail skirt over leather. Open-face helmet with a narrow nasal guard so the face is visible: short dark hair, trimmed beard, scarred determined face. A short heraldic tabard and a knee-length cape in royal crimson (#641E27), small royal crest (a stylized crown over a sword) on the chest, antique gold trim. Belt with a knife sheath on the right hip") },
-            new Job { Name = "king_blue", Kind = Kind.Character, Index = 2, Height = 1.9f, Prompt = string.Format(CharBase, "the King of the Royal Order, male human, 190 cm, regal and tall, mature (around 50), grey-streaked beard, stern face. Ornate gilded plate cuirass under a heavy floor-length royal mantle in cold steel blue (#2F4A66) with white fur collar, a tall slender gold crown with a single gem. Long ceremonial robe under the armor. Hands empty") },
-            new Job { Name = "king_red", Kind = Kind.Character, Index = 3, Height = 1.9f, Prompt = string.Format(CharBase, "the King of the Royal Order, male human, 190 cm, regal and tall, mature (around 50), grey-streaked beard, stern face. Ornate gilded plate cuirass under a heavy floor-length royal mantle in royal crimson (#641E27) with white fur collar, a tall slender gold crown with a single gem. Long ceremonial robe under the armor. Hands empty") },
+            new Job { Name = "monster_0_footman", Kind = Kind.Monster, Index = 0, Height = 1.75f, Faces = 5000, Prompt = string.Format(MonsterBase, "a hollow footsoldier, real soldier size (1.75 m), slightly hunched, mismatched rusted armor plates, a long jagged spear, fast and light") },
+            new Job { Name = "monster_1_shield", Kind = Kind.Monster, Index = 1, Height = 1.85f, Faces = 5000, Prompt = string.Format(MonsterBase, "a hollow shieldbearer, real soldier size (1.85 m), stocky and wide, massive slab-like armor, one giant tower shield fused to its left arm, slow and heavy") },
+            new Job { Name = "monster_2_archer", Kind = Kind.Monster, Index = 2, Height = 1.75f, Faces = 5000, Prompt = string.Format(MonsterBase, "a thin hollow archer, real soldier size (1.75 m), slightly hunched, tattered hood over a cage-like armor torso, a bone longbow held at the side, quiver of golden-tipped arrows") },
+            new Job { Name = "monster_3_ogre", Kind = Kind.Monster, Index = 3, Height = 2.6f, Faces = 8000, Prompt = string.Format(MonsterBase, "a giant hollow ogre, 2.6 m tall, bulging plates of armor over a bloated iron body, huge club-like fists, lumbering and brutal") },
+            new Job { Name = "monster_4_twinogre", Kind = Kind.Monster, Index = 4, Height = 2.9f, Faces = 8000, Prompt = string.Format(MonsterBase, "a colossal two-headed hollow ogre, 2.9 m tall, two helmeted heads side by side snarling, four thick arms, even heavier armor") },
+            new Job { Name = "monster_5_deathknight", Kind = Kind.Monster, Index = 5, Height = 2.1f, Faces = 8000, Prompt = string.Format(MonsterBase, "a tall hollow death knight, 2.1 m, black full plate with a torn cape, a huge greatsword held low, faint purple-black rune light instead of gold") },
+            new Job { Name = "monster_6_firegolem", Kind = Kind.Monster, Index = 6, Height = 2.8f, Faces = 8000, Prompt = string.Format(MonsterBase, "a volcanic golem, 2.8 m, body of cracked black basalt with glowing lava seams, molten core visible through the chest, slow heavy stance (no team colors)") },
+            new Job { Name = "building_barracks", Kind = Kind.Building, Index = 0, Height = 3.0f, Faces = 6000, Prompt = string.Format(BuildingBase, "a small medieval field barracks for a dark fantasy game, 2 x 2 m footprint under 3 m tall, dark timber and iron, a banner pole, a doorway where soldiers march out") },
+            new Job { Name = "building_manawell", Kind = Kind.Building, Index = 1, Height = 1.5f, Faces = 6000, Prompt = string.Format(BuildingBase, "a small stone mana well for a dark fantasy game, 1.5 m across, glowing cool blue water with soft rising motes, iron frame and bucket") },
+            new Job { Name = "knight_blue", Kind = Kind.Character, Faces = 20000, Index = 0, Height = 1.83f, Prompt = string.Format(CharBase, "a Royal Order knight, male human, 183 cm, 8 heads tall, athletic build. Fitted plate armor with layered pauldrons, articulated gauntlets and sabatons, a chainmail skirt over leather. Open-face helmet with a narrow nasal guard so the face is visible: short dark hair, trimmed beard, scarred determined face. A short heraldic tabard and a knee-length cape in cold steel blue (#2F4A66), small royal crest (a stylized crown over a sword) on the chest. Belt with a knife sheath on the right hip") },
+            new Job { Name = "knight_red", Kind = Kind.Character, Faces = 20000, Index = 1, Height = 1.83f, Prompt = string.Format(CharBase, "a Royal Order knight, male human, 183 cm, 8 heads tall, athletic build. Fitted plate armor with layered pauldrons, articulated gauntlets and sabatons, a chainmail skirt over leather. Open-face helmet with a narrow nasal guard so the face is visible: short dark hair, trimmed beard, scarred determined face. A short heraldic tabard and a knee-length cape in royal crimson (#641E27), small royal crest (a stylized crown over a sword) on the chest, antique gold trim. Belt with a knife sheath on the right hip") },
+            new Job { Name = "king_blue", Kind = Kind.Character, Faces = 20000, Index = 2, Height = 1.9f, Prompt = string.Format(CharBase, "the King of the Royal Order, male human, 190 cm, regal and tall, mature (around 50), grey-streaked beard, stern face. Ornate gilded plate cuirass under a heavy floor-length royal mantle in cold steel blue (#2F4A66) with white fur collar, a tall slender gold crown with a single gem. Long ceremonial robe under the armor. Hands empty") },
+            new Job { Name = "king_red", Kind = Kind.Character, Faces = 20000, Index = 3, Height = 1.9f, Prompt = string.Format(CharBase, "the King of the Royal Order, male human, 190 cm, regal and tall, mature (around 50), grey-streaked beard, stern face. Ornate gilded plate cuirass under a heavy floor-length royal mantle in royal crimson (#641E27) with white fur collar, a tall slender gold crown with a single gem. Long ceremonial robe under the armor. Hands empty") },
         };
 
         // ---- 실행 상태 ----
@@ -172,7 +172,7 @@ namespace KnifeWar.EditorTools
             {
                 if (!File.Exists(png)) return "원화 파일이 없어 3D 를 못 만듦";
                 if (!secrets.TryGetValue("NCAI_API_KEY", out var nkey) || nkey.Length < 10) return "NCAI_API_KEY 없음 (Deploy/secrets.env)";
-                string e = ImageTo3D(nkey, png, glb);
+                string e = ImageTo3D(nkey, png, glb, job.Faces > 0 ? job.Faces : 8000);
                 if (e != null) return "3D: " + e;
             }
             return null;
@@ -220,7 +220,7 @@ namespace KnifeWar.EditorTools
             return "응답 형식 모름: " + Short(text);
         }
 
-        static string ImageTo3D(string key, string png, string outGlb)
+        static string ImageTo3D(string key, string png, string outGlb, int faces)
         {
             string requestId;
             using (var form = new MultipartFormDataContent())
@@ -229,7 +229,7 @@ namespace KnifeWar.EditorTools
                 img.Headers.ContentType = new MediaTypeHeaderValue("image/png");
                 form.Add(img, "image", Path.GetFileName(png));
                 form.Add(new StringContent("tri"), "target_face_type");
-                form.Add(new StringContent("30000"), "target_face_num");   // 게임용: 3만 삼각형
+                form.Add(new StringContent(faces.ToString()), "target_face_num");   // 게임용 폴리곤 예산 (몬스터 수백 마리 동시 표시)
                 form.Add(new StringContent("true"), "generate_texture");
                 form.Add(new StringContent("-1"), "seed");
                 using var req = new HttpRequestMessage(HttpMethod.Post, "https://openapi.ai.nc.com/3d/varco/v1/image-to-3d") { Content = form };

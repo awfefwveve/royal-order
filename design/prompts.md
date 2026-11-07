@@ -25,7 +25,7 @@
 ## 1. 공통 스타일 문구 (모든 이미지 프롬프트 끝에 붙임)
 
 ```
-Style: dark fantasy cinematic realism, AAA console game concept art, physically based materials,
+Style: photorealistic, hyper-realistic cinematic realism (a real object photographed in a studio, not a painting), AAA console game quality, physically based materials with realistic wear,
 realistic human anatomy, clear readable silhouette, restrained detail (no clutter, no excessive scratches,
 no excessive glow), palette: dark stone #17191D, iron #34383E, royal crimson #641E27, antique gold #A67C38,
 gold highlight #D9C49A. Soft even studio lighting, key light 5600K, subtle cool rim light.
@@ -99,9 +99,9 @@ from cracks (subtle, small areas only). [공통 스타일 문구]
 
 | 파일 | [MONSTER] |
 |---|---|
-| `monster_0_footman` | `a small hunched hollow footsoldier, 1.2 m tall, mismatched rusted armor plates, a long jagged spear, fast and light` |
-| `monster_1_shield` | `a stocky hollow shieldbearer, 1.6 m tall and wide, massive slab-like armor, one giant tower shield fused to its left arm, slow and heavy` |
-| `monster_2_archer` | `a thin hollow archer, 1.1 m tall slightly hunched, tattered hood over a cage-like armor torso, a bone longbow drawn, quiver of golden-tipped arrows` |
+| `monster_0_footman` | `a hollow footsoldier, real soldier size (1.75 m), slightly hunched, mismatched rusted armor plates, a long jagged spear, fast and light` |
+| `monster_1_shield` | `a hollow shieldbearer, real soldier size (1.85 m), stocky and wide, massive slab-like armor, one giant tower shield fused to its left arm, slow and heavy` |
+| `monster_2_archer` | `a thin hollow archer, real soldier size (1.75 m), slightly hunched, tattered hood over a cage-like armor torso, a bone longbow held at the side, quiver of golden-tipped arrows` |
 | `monster_3_ogre` | `a giant hollow ogre, 2.6 m tall, bulging plates of armor over a bloated iron body, huge club-like fists, lumbering and brutal` |
 | `monster_4_twinogre` | `a colossal two-headed hollow ogre, 2.9 m tall, two helmeted heads side by side snarling, four thick arms, even heavier armor` |
 | `monster_5_deathknight` | `a tall hollow death knight, 2.1 m, black full plate with a torn cape, a huge greatsword, faint purple-black rune light instead of gold` |
