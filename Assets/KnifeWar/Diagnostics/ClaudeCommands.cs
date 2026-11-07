@@ -86,6 +86,12 @@ namespace KnifeWar.Diagnostics
                 Debug.Log($"[claude-cmd] {cmd}");
                 try
                 {
+                    if (cmd.StartsWith("videogen "))   // 동작 영상: videogen 이름 동작 [model=max|h3|seedance]
+                    {
+                        File.WriteAllText(Path.Combine(Path.GetDirectoryName(CmdPath), "claude_videogen.txt"), raw.Trim().Substring(9).Trim());
+                        if (!EditorApplication.ExecuteMenuItem("KnifeWar/아트/동작 영상 생성 (Logs/claude_videogen.txt)")) Debug.LogError("[claude-cmd] 영상 생성 메뉴를 못 찾음");
+                        continue;
+                    }
                     if (cmd.StartsWith("artgen "))   // 아트 생성 파이프라인: artgen monsters | all | 이름 [force] [step=…] | yaw 이름 각도
                     {
                         File.WriteAllText(Path.Combine(Path.GetDirectoryName(CmdPath), "claude_artgen.txt"), cmd.Substring(7).Trim());
@@ -94,9 +100,6 @@ namespace KnifeWar.Diagnostics
                     }
                     switch (cmd)
                     {
-                        case "ps":   // Logs/claude_ps.ps1 을 백그라운드로 실행 → Logs/claude_ps_out.txt (설치·외부 도구용, 에디터는 안 멈춤)
-                            RunPowerShell();
-                            break;
                         case "sysinfo":
                             Debug.Log($"[claude-cmd] GPU {SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsMemorySize}MB, {SystemInfo.graphicsDeviceType}) / CPU {SystemInfo.processorType} x{SystemInfo.processorCount} / RAM {SystemInfo.systemMemorySize}MB / OS {SystemInfo.operatingSystem}");
                             break;
@@ -151,20 +154,6 @@ namespace KnifeWar.Diagnostics
             }
         }
 
-        static void RunPowerShell()
-        {
-            string dir = Path.GetDirectoryName(CmdPath);
-            string script = Path.Combine(dir, "claude_ps.ps1");
-            string outp = Path.Combine(dir, "claude_ps_out.txt");
-            if (!File.Exists(script)) { Debug.LogError("[claude-cmd] claude_ps.ps1 없음"); return; }
-            // 실행 중 표시 파일: 끝나면 스크립트가 지우도록 cmd 에서 처리 (에디터 리로드와 무관하게 계속 돔)
-            string done = Path.Combine(dir, "claude_ps_done.txt");
-            try { if (File.Exists(done)) File.Delete(done); } catch { }
-            string args = $"/c powershell -NoProfile -ExecutionPolicy Bypass -File \"{script}\" > \"{outp}\" 2>&1 & echo exit %errorlevel% > \"{done}\"";
-            var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", args) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(dir) };
-            System.Diagnostics.Process.Start(psi);
-            Debug.Log("[claude-cmd] ps 시작 → " + outp);
-        }
 
         static void Build(BuildTarget target, string path, bool server)
         {
