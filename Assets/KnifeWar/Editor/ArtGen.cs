@@ -75,6 +75,7 @@ namespace KnifeWar.EditorTools
         static Task<string> _task;
         static bool _force;
         static string _step;   // null = 전부, image / model / import
+        static string _views = "front";   // 원화 각도: front 기본, "views=front,side" 처럼 지정 (한 장씩 확인받고 찍기 위해)
         static bool _hooked;
         static double _started;
 
@@ -101,12 +102,13 @@ namespace KnifeWar.EditorTools
                 Run(parts[1] + " step=import");
                 return;
             }
-            _force = false; _step = null;
+            _force = false; _step = null; _views = "front";
             var sel = new List<Job>();
             foreach (var p in parts)
             {
                 if (p == "force") { _force = true; continue; }
                 if (p.StartsWith("step=")) { _step = p.Substring(5); continue; }
+                if (p.StartsWith("views=")) { _views = p.Substring(6); continue; }
                 foreach (var j in Jobs)
                 {
                     bool match = p == "all" || j.Name == p
@@ -129,11 +131,11 @@ namespace KnifeWar.EditorTools
                 _current = _queue.Dequeue();
                 ApplyTuning(_current);
                 _started = EditorApplication.timeSinceStartup;
-                if (_lastImageModel == null) { var saved = EditorPrefs.GetString("kw.artgen.model", ""); if (saved.Length > 0) _lastImageModel = saved; }
-                var job = _current; bool force = _force; string step = _step;
+                if (_lastImageModel == null) { var saved = EditorPrefs.GetString("kw.artgen.model26", ""); if (saved.Length > 0) _lastImageModel = saved; }
+                var job = _current; bool force = _force; string step = _step; string views = _views;
                 string root = ProjectRoot;
                 Debug.Log($"[artgen] ▶ {job.Name}");
-                _task = Task.Run(() => NetworkSteps(job, force, step, root));
+                _task = Task.Run(() => NetworkSteps(job, force, step, root, views));
                 return;
             }
             if (!_task.IsCompleted)
@@ -141,7 +143,7 @@ namespace KnifeWar.EditorTools
                 return;
             }
             string err = _task.IsFaulted ? Short((_task.Exception?.InnerException ?? _task.Exception)?.ToString()) : _task.Result;
-            if (_lastImageModel != null) EditorPrefs.SetString("kw.artgen.model", _lastImageModel);
+            if (_lastImageModel != null) EditorPrefs.SetString("kw.artgen.model26", _lastImageModel);
             if (!string.IsNullOrEmpty(err)) Debug.LogError($"[artgen] {_current.Name} 실패: {err}");
             else if (_step == null || _step == "import")
             {
@@ -154,7 +156,7 @@ namespace KnifeWar.EditorTools
 
         // ---------------- 네트워크 (백그라운드 스레드) ----------------
 
-        static string NetworkSteps(Job job, bool force, string step, string root)
+        static string NetworkSteps(Job job, bool force, string step, string root, string views)
         {
             string dir = Path.Combine(root, GenDir, job.Name);
             Directory.CreateDirectory(dir);
@@ -165,36 +167,36 @@ namespace KnifeWar.EditorTools
             var secrets = ReadSecrets(root);
 
             bool doImage = step == null || step == "image";
+            bool wantFront = views.Contains("front"), wantSide = views.Contains("side"), wantBack = views.Contains("back");
             bool doModel = step == null || step == "model";
-            if (doImage && (force || !File.Exists(png)))
+            if (doImage && wantFront && (force || !File.Exists(png)))
             {
                 if (!secrets.TryGetValue("OPENAI_API_KEY", out var okey) || okey.Length < 10) return "OPENAI_API_KEY 없음 (Deploy/secrets.env)";
                 // 모델 이름은 자주 바뀜: secrets.env 의 OPENAI_IMAGE_MODEL 이 있으면 그것, 없으면 후보를 차례로
-                string[] models = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m) && m.Length > 0 ? new[] { m } : new[] { "gpt-image-2", "gpt-image-2.5-flare", "gpt-image-1.5", "gpt-image-1" };
+                string[] models = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m) && m.Length > 0 ? new[] { m } : new[] { "gpt-image-2.6-sunburst", "gpt-image-2.6-flare", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare" };
                 string e = null;
                 foreach (var model in models)
                 {
                     e = GenerateImage(okey, model, job.Prompt + Style, png);
                     if (e == null) { _lastImageModel = model; UnityEngine.Debug.Log($"[artgen] 원화 모델: {model}"); break; }
-                    if (!e.Contains("does not exist") && !e.Contains("invalid_value")) break;
+                    if (!e.Contains("does not exist")) break;   // 모델이 없을 때만 다음 후보로
                 }
                 if (e != null) return "원화: " + e;
                 if (File.Exists(glb)) File.Delete(glb);   // 원화가 바뀌면 3D 도 다시
-                if (File.Exists(side)) File.Delete(side);
-                if (File.Exists(back)) File.Delete(back);
+                // 옆·뒤는 지우지 않음 (새 정면과 맞지 않으면 따로 다시 찍기)
             }
-            if (doImage && File.Exists(png) && (force || !File.Exists(side) || !File.Exists(back)))
+            if (doImage && File.Exists(png) && (wantSide || wantBack))
             {
                 // 옆·뒤 모습 (동작 추적용): 정면 그림을 참조로 같은 디자인 유지
                 if (!secrets.TryGetValue("OPENAI_API_KEY", out var okey2) || okey2.Length < 10) return "OPENAI_API_KEY 없음 (Deploy/secrets.env)";
-                string model = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m2) && m2.Length > 0 ? m2 : _lastImageModel ?? "gpt-image-2.5-flare";
+                string model = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m2) && m2.Length > 0 ? m2 : _lastImageModel ?? "gpt-image-2.6-sunburst";
                 const string viewBase = "The SAME character as the attached image: identical design, proportions, armor, colors and details. {0}, orthographic camera, same neutral A-pose, same scale and height, entire body visible with margin, isolated single object on a plain transparent background, even shadowless lighting, no ground shadow.";
-                if (force || !File.Exists(side))
+                if (wantSide && (force || !File.Exists(side)))
                 {
                     string e2 = EditImage(okey2, model, png, string.Format(viewBase, "Strict right side view (90 degrees)") + Style, side);
                     if (e2 != null) return "옆모습: " + e2;
                 }
-                if (force || !File.Exists(back))
+                if (wantBack && (force || !File.Exists(back)))
                 {
                     string e2 = EditImage(okey2, model, png, string.Format(viewBase, "Strict back view (180 degrees)") + Style, back);
                     if (e2 != null) return "뒷모습: " + e2;
@@ -247,7 +249,7 @@ namespace KnifeWar.EditorTools
             form.Add(new StringContent(model), "model");
             form.Add(new StringContent(prompt), "prompt");
             form.Add(new StringContent("1024x1024"), "size");
-            form.Add(new StringContent("medium"), "quality");
+            form.Add(new StringContent("high"), "quality");
             if (transparent) form.Add(new StringContent("transparent"), "background");
             form.Add(new StringContent("png"), "output_format");
             using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/images/edits") { Content = form };
@@ -266,8 +268,15 @@ namespace KnifeWar.EditorTools
 
         static string GenerateImage(string key, string model, string prompt, string outPng)
         {
+            string e = GenerateImage(key, model, prompt, outPng, true);
+            if (e != null && e.Contains("background")) e = GenerateImage(key, model, prompt, outPng, false);   // 투명 배경 미지원 모델 → 회색 배경
+            return e;
+        }
+
+        static string GenerateImage(string key, string model, string prompt, string outPng, bool transparent)
+        {
             string body = "{\"model\":" + MiniJson.Quote(model) + ",\"prompt\":" + MiniJson.Quote(prompt) +
-                          ",\"size\":\"1024x1024\",\"quality\":\"medium\",\"background\":\"transparent\",\"output_format\":\"png\",\"n\":1}";
+                          ",\"size\":\"1024x1024\",\"quality\":\"high\"" + (transparent ? ",\"background\":\"transparent\"" : "") + ",\"output_format\":\"png\",\"n\":1}";
             using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/images/generations");
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
             req.Content = new StringContent(body, Encoding.UTF8, "application/json");
