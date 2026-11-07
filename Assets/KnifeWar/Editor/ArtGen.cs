@@ -164,7 +164,15 @@ namespace KnifeWar.EditorTools
             if (doImage && (force || !File.Exists(png)))
             {
                 if (!secrets.TryGetValue("OPENAI_API_KEY", out var okey) || okey.Length < 10) return "OPENAI_API_KEY 없음 (Deploy/secrets.env)";
-                string e = GenerateImage(okey, secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m) ? m : "gpt-image-1", job.Prompt + Style, png);
+                // 모델 이름은 자주 바뀜: secrets.env 의 OPENAI_IMAGE_MODEL 이 있으면 그것, 없으면 후보를 차례로
+                string[] models = secrets.TryGetValue("OPENAI_IMAGE_MODEL", out var m) && m.Length > 0 ? new[] { m } : new[] { "gpt-image-2", "gpt-image-2.5-flare", "gpt-image-1.5", "gpt-image-1" };
+                string e = null;
+                foreach (var model in models)
+                {
+                    e = GenerateImage(okey, model, job.Prompt + Style, png);
+                    if (e == null) { UnityEngine.Debug.Log($"[artgen] 원화 모델: {model}"); break; }
+                    if (!e.Contains("does not exist") && !e.Contains("invalid_value")) break;
+                }
                 if (e != null) return "원화: " + e;
                 if (File.Exists(glb)) File.Delete(glb);   // 원화가 바뀌면 3D 도 다시
             }
