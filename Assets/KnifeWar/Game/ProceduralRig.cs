@@ -305,20 +305,23 @@ namespace KnifeWar.Game
 
             _idleT += dt;
             float runNorm = Mathf.Clamp01(speed / PlayerAvatar.RunSpeed);
-            // 보행 위상: 1m 에 약 0.8 사이클 (보폭 ~1.25m)
-            _gait += speed * dt * (Mathf.PI * 2f) / 1.25f;
-            float g = Mathf.Sin(_gait);
-            float legAmp = Mathf.Lerp(0f, 42f, Mathf.Clamp01(speed / 4.5f));
-            float bob = Mathf.Abs(Mathf.Sin(_gait * 2f)) * 0.035f * runNorm;
+            // 보행 위상: 한 사이클(두 걸음) 에 걷기 1.6m ~ 달리기 2.9m. 군인 걸음처럼 또박또박 (걷기 ≈1.3Hz, 달리기 ≈2.1Hz).
+            float stride = Mathf.Lerp(1.6f, 2.9f, runNorm);
+            _gait += speed * dt * (Mathf.PI * 2f) / stride;
+            float g = Mathf.Sin(_gait);          // +: 왼다리 앞
+            float gc = Mathf.Cos(_gait);         // 다리가 앞으로 지나갈 때 무릎 접힘
+            float moveNorm = Mathf.Clamp01(speed / 2.0f);
+            float legAmp = Mathf.Lerp(0f, Mathf.Lerp(30f, 46f, runNorm), moveNorm);
+            float bob = Mathf.Abs(Mathf.Sin(_gait * 2f)) * (0.02f + 0.03f * runNorm) * moveNorm;
 
             // 앉기
             float cr = crouch;
             _hips.localPosition = new Vector3(0f, HipY - 0.42f * cr + bob, 0.05f * cr);
-            _torso.localRotation = Quaternion.Euler(14f * cr + 4f * runNorm + Mathf.Sin(_idleT * 1.2f) * 1.2f, 0f, 0f);
+            _torso.localRotation = Quaternion.Euler(14f * cr + 6f * runNorm + Mathf.Sin(_idleT * 1.2f) * 1.2f, 0f, g * 3f * moveNorm);
 
-            // 다리 (앉으면 무릎 깊이 접힘)
+            // 다리 (앉으면 무릎 깊이 접힘): 디딘 다리는 곧게, 넘어오는 다리는 무릎을 들어서 (발발거림 없이 한 걸음씩)
             float thighL = g * legAmp + 48f * cr, thighR = -g * legAmp + 48f * cr;
-            float kneeL = Mathf.Max(0f, -g) * legAmp * 1.3f + 75f * cr, kneeR = Mathf.Max(0f, g) * legAmp * 1.3f + 75f * cr;
+            float kneeL = Mathf.Max(0f, gc) * legAmp * 1.5f + 75f * cr, kneeR = Mathf.Max(0f, -gc) * legAmp * 1.5f + 75f * cr;
             _hipL.localRotation = Quaternion.Euler(-thighL, 0f, 0f);
             _hipR.localRotation = Quaternion.Euler(-thighR, 0f, 0f);
             _kneeL.localRotation = Quaternion.Euler(kneeL, 0f, 0f);
@@ -351,27 +354,40 @@ namespace KnifeWar.Game
                 if (t >= 1f) _summonT = -1f;
             }
 
-            // 공격 (기사 오른팔): 판정 타이밍과 맞춤 — 베기 0.06초에 닿고 0.45초, 찌르기 0.22초에 닿고 1.0초
+            // 공격 (기사): 상대가 모션을 보고 반응해야 하므로 크고 분명하게. 판정 타이밍과 맞춤 —
+            //   베기: 0.06초에 닿고 0.4초 주기. 어깨 위 오른쪽에서 왼쪽 아래로 크게 내려치는 사선 베기 + 몸통 비틀기.
+            //   찌르기: 0.2초 동안 팔을 뒤로 당겼다가(예고) 0.2초에 닿고 0.3초 쭉 뻗어 멈춤 + 몸 앞으로 기울임, 1.0초 주기.
             if (_attackT >= 0f && !IsKing)
             {
                 _attackT += dt;
                 if (_attackType == KnifeAttack.Stab)
                 {
                     float t = Mathf.Clamp01(_attackT / 1.0f);
-                    float k = t < 0.22f ? Mathf.SmoothStep(0f, 1f, t / 0.22f) : 1f - Mathf.SmoothStep(0f, 1f, (t - 0.22f) / 0.78f);
-                    armR = Quaternion.Euler(Mathf.Lerp(-20f, -95f, k), Mathf.Lerp(-20f, -5f, k), -14f);   // 앞으로 쭉
-                    elbR = Quaternion.Euler(Mathf.Lerp(-60f, -5f, k), 10f, 0f);
-                    _torso.localRotation *= Quaternion.Euler(0f, -18f * k, 0f);
+                    float k;      // 0 = 기본, -1 = 뒤로 당김, 1 = 쭉 뻗음
+                    if (t < 0.20f) k = -Mathf.SmoothStep(0f, 1f, t / 0.20f);                           // 예고: 뒤로 당김
+                    else if (t < 0.26f) k = Mathf.Lerp(-1f, 1f, (t - 0.20f) / 0.06f);                // 순간 찌름
+                    else if (t < 0.55f) k = 1f;                                                      // 뻗은 채 멈춤
+                    else k = 1f - Mathf.SmoothStep(0f, 1f, (t - 0.55f) / 0.45f);                     // 복귀
+                    float back = Mathf.Max(0f, -k), fwd = Mathf.Max(0f, k);
+                    armR = Quaternion.Euler(-35f + 30f * back - 70f * fwd, -20f + 15f * fwd, -14f + 20f * back);   // 뒤로 당김 → 앞으로 쭉
+                    elbR = Quaternion.Euler(-60f - 50f * back + 55f * fwd, 10f, 0f);
+                    armL = Quaternion.Euler(8f - 25f * fwd, 0f, 10f + 15f * fwd);                      // 왼팔은 균형 잡느라 뒤로
+                    _torso.localRotation *= Quaternion.Euler(16f * fwd - 6f * back, -22f * fwd + 12f * back, 0f);
+                    _hips.localPosition += new Vector3(0f, -0.04f * fwd, 0.10f * fwd);               // 앞으로 내딛음
                     if (t >= 1f) _attackT = -1f;
                 }
                 else
                 {
-                    float t = Mathf.Clamp01(_attackT / 0.45f);
-                    // 0~0.06: 오른쪽 뒤로 당김 → 0.06~0.3: 왼쪽으로 휘두름 → 복귀
-                    float sw = t < 0.13f ? -t / 0.13f : (t < 0.67f ? Mathf.Lerp(-1f, 1f, (t - 0.13f) / 0.54f) : Mathf.Lerp(1f, 0f, (t - 0.67f) / 0.33f));
-                    armR = Quaternion.Euler(-70f, Mathf.Lerp(-70f, 60f, (sw + 1f) * 0.5f), -20f);
-                    elbR = Quaternion.Euler(-25f, 0f, 0f);
-                    _torso.localRotation *= Quaternion.Euler(0f, 22f * sw, 0f);
+                    float t = Mathf.Clamp01(_attackT / 0.40f);
+                    // 0~0.06초: 오른쪽 위로 들어 올림 → 0.06~0.24초: 왼쪽 아래로 크게 베어 내림 → 복귀
+                    float sw = t < 0.15f ? -Mathf.SmoothStep(0f, 1f, t / 0.15f)
+                        : (t < 0.6f ? Mathf.Lerp(-1f, 1f, Mathf.SmoothStep(0f, 1f, (t - 0.15f) / 0.45f))
+                        : Mathf.Lerp(1f, 0f, (t - 0.6f) / 0.4f));
+                    float u = (sw + 1f) * 0.5f;                                                      // 0 = 오른쪽 위, 1 = 왼쪽 아래
+                    armR = Quaternion.Euler(Mathf.Lerp(-120f, -40f, u), Mathf.Lerp(-80f, 70f, u), Mathf.Lerp(-40f, 10f, u));
+                    elbR = Quaternion.Euler(Mathf.Lerp(-50f, -10f, u), 0f, 0f);
+                    armL = Quaternion.Euler(8f + 20f * Mathf.Abs(sw), 0f, 10f + 20f * Mathf.Max(0f, sw));
+                    _torso.localRotation *= Quaternion.Euler(10f * Mathf.Max(0f, sw), 38f * sw, -8f * sw);
                     if (t >= 1f) _attackT = -1f;
                 }
             }

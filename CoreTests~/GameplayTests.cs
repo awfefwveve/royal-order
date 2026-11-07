@@ -37,6 +37,21 @@ public static class Program2 {
       c.SubmitInput(0, new KnifeInput { Pressed = KnifeAttack.Slash, Yaw = 0, Pitch = -0.2f, ViewTick = c.Tick - 13 }); Run(c, 12);
       Check(events.Count == 0, "2.6m 거리 → 빗나감");
     }
+    // 3b. 사거리 = 사람 하나 사이 (1.6m 중심거리 → 닿음, 1.9m → 안 닿음)
+    { var c = Setup(); events.Clear(); Place(c, 0, 0, 0, 0); Place(c, 1, 0, 1.6f, MathF.PI); Run(c, 20);
+      c.SubmitInput(0, new KnifeInput { Pressed = KnifeAttack.Slash, Yaw = 0, Pitch = -0.15f, ViewTick = c.Tick - 13 }); Run(c, 12);
+      Check(events.Count == 1, "1.6m 중심거리 (사이에 사람 한 명) → 베기 닿음");
+    }
+    { var c = Setup(); events.Clear(); Place(c, 0, 0, 0, 0); Place(c, 1, 0, 1.9f, MathF.PI); Run(c, 20);
+      c.SubmitInput(0, new KnifeInput { Pressed = KnifeAttack.Stab, Yaw = 0, Pitch = -0.15f, ViewTick = c.Tick - 13 }); Run(c, 20);
+      Check(events.Count == 0, "1.9m 중심거리 → 찌르기 안 닿음");
+    }
+    // 3c. 공격 주기: 베기 0.4초, 찌르기 1.0초
+    { var s = KnifeTuning.Slash(TR); var t = KnifeTuning.Stab(TR);
+      int sc = s.WindupTicks + s.RecoveryTicks, tc = t.WindupTicks + t.RecoveryTicks;
+      Check(Math.Abs(sc * 1000f / TR - 400f) <= 16f, $"베기 주기 ≈ 0.4초 (got {sc * 1000f / TR}ms)");
+      Check(Math.Abs(tc * 1000f / TR - 1000f) <= 16f, $"찌르기 주기 ≈ 1.0초 (got {tc * 1000f / TR}ms)");
+    }
     // 4. 옆으로 빗나감
     { var c = Setup(); events.Clear(); Place(c, 0, 0, 0, 0); Place(c, 1, 0, 1.2f, MathF.PI); Run(c, 20);
       c.SubmitInput(0, new KnifeInput { Pressed = KnifeAttack.Slash, Yaw = 0.9f, Pitch = 0, ViewTick = c.Tick - 13 }); Run(c, 12);

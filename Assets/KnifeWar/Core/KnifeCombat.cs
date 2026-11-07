@@ -46,8 +46,11 @@ namespace KnifeWar.Core
         public const int SlashDamage = 50;
         public const int StabDamage = 100;
 
-        public static KnifeAttackDef Slash(int tickRate) => KnifeAttackDef.Make(tickRate, 1.6f, 0.30f, SlashDamage, 60, 380, 1f);
-        public static KnifeAttackDef Stab(int tickRate) => KnifeAttackDef.Make(tickRate, 1.4f, 0.18f, StabDamage, 220, 820, 1f);
+        // 공격 주기 (확정): 베기 0.4초, 찌르기 1.0초 (준비 + 후딜).
+        // 사거리 (확정): 눈에서 약 1.5m 까지 닿음 = 나와 상대 사이에 사람 한 명이 딱 들어가는 거리 (몸통 폭 0.6m).
+        public const float ReachMeters = 1.5f;
+        public static KnifeAttackDef Slash(int tickRate) => KnifeAttackDef.Make(tickRate, ReachMeters - 0.30f, 0.30f, SlashDamage, 60, 340, 1f);
+        public static KnifeAttackDef Stab(int tickRate) => KnifeAttackDef.Make(tickRate, ReachMeters - 0.18f, 0.18f, StabDamage, 200, 800, 1f);
 
         /// <summary>부위 배율 없음: 맞으면 1, 빗나감(None)만 0.</summary>
         public static float PartMultiplier(HitPart part) => part == HitPart.None ? 0f : 1f;

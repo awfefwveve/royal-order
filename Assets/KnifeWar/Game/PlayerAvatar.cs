@@ -294,12 +294,17 @@ namespace KnifeWar.Game
                 return;
             }
 
-            float dur = _knifeSwingType == KnifeAttack.Stab ? 0.45f : 0.3f;
+            // 찌르기 0.8초: 0.2초 뒤로 당김(예고) → 0.2초에 닿음 → 뻗은 채 잠깐 멈춤 → 복귀. 베기 0.3초 (주기 0.4초).
+            float dur = _knifeSwingType == KnifeAttack.Stab ? 0.8f : 0.3f;
             _knifeSwingT += dt;
             float t = Mathf.Clamp01(_knifeSwingT / dur);
             if (_knifeSwingType == KnifeAttack.Stab)
             {
-                float k = t < 0.45f ? -Mathf.Sin(t / 0.45f * Mathf.PI * 0.5f) * 0.15f : Mathf.Sin((t - 0.45f) / 0.55f * Mathf.PI) * 0.45f;
+                float k;
+                if (t < 0.25f) k = -Mathf.Sin(t / 0.25f * Mathf.PI * 0.5f) * 0.18f;
+                else if (t < 0.33f) k = Mathf.Lerp(-0.18f, 0.5f, (t - 0.25f) / 0.08f);
+                else if (t < 0.6f) k = 0.5f;
+                else k = Mathf.Lerp(0.5f, 0f, Mathf.SmoothStep(0f, 1f, (t - 0.6f) / 0.4f));
                 Knife.localPosition = restPos + new Vector3(-0.15f, 0.08f, k);
                 Knife.localRotation = Quaternion.Euler(80f, 0f, 0f);
             }
