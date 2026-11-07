@@ -264,7 +264,7 @@ namespace KnifeWar.Game
 
             // 직업별
             if (me.Class == PlayerClass.King) DrawHand(me, w, h);
-            else Label(new Rect(w - 300, h - 50, 280, 30), L.T("knight_keys"), _small, new Color(1, 1, 1, 0.8f));
+            else Label(new Rect(w - 460, h - 50, 440, 30), L.T("knight_keys"), _small, new Color(1, 1, 1, 0.8f));
 
             // 팀 상태 (버프·필드·건물)
             float sy = h - 100;
