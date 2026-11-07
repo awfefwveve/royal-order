@@ -433,12 +433,32 @@ namespace KnifeWar.EditorTools
             rt.antiAliasing = 4;
             try
             {
-                cam.targetTexture = rt;
-                cam.Render();
-                var prev = RenderTexture.active; RenderTexture.active = rt;
+                // 불투명 셰이더는 알파를 제대로 안 써서, 검은 배경·흰 배경 두 번 찍어 차이로 알파를 만든다 (차이 매트)
+                Color[] Shot(Color bg)
+                {
+                    cam.backgroundColor = bg;
+                    cam.targetTexture = rt;
+                    cam.Render();
+                    var prev = RenderTexture.active; RenderTexture.active = rt;
+                    var t = new Texture2D(Size, Size, TextureFormat.RGBA32, false);
+                    t.ReadPixels(new Rect(0, 0, Size, Size), 0, 0); t.Apply();
+                    RenderTexture.active = prev;
+                    var px = t.GetPixels();
+                    UnityEngine.Object.DestroyImmediate(t);
+                    return px;
+                }
+                var black = Shot(new Color(0f, 0f, 0f, 1f));
+                var white = Shot(new Color(1f, 1f, 1f, 1f));
+                var outPx = new Color[black.Length];
+                for (int i = 0; i < outPx.Length; i++)
+                {
+                    var bk = black[i]; var wt = white[i];
+                    float a = 1f - ((wt.r - bk.r) + (wt.g - bk.g) + (wt.b - bk.b)) / 3f;
+                    a = Mathf.Clamp01(a);
+                    outPx[i] = a > 0.004f ? new Color(Mathf.Clamp01(bk.r / a), Mathf.Clamp01(bk.g / a), Mathf.Clamp01(bk.b / a), a) : new Color(0f, 0f, 0f, 0f);
+                }
                 var tex = new Texture2D(Size, Size, TextureFormat.RGBA32, false);
-                tex.ReadPixels(new Rect(0, 0, Size, Size), 0, 0); tex.Apply();
-                RenderTexture.active = prev;
+                tex.SetPixels(outPx); tex.Apply();
                 File.WriteAllBytes(outPng, tex.EncodeToPNG());
                 UnityEngine.Object.DestroyImmediate(tex);
             }
