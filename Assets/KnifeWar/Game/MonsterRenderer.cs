@@ -27,6 +27,10 @@ namespace KnifeWar.Game
         NativeArray<int> _counts;
         NativeArray<float3> _scale;       // 종류별 크기 (x, y, z)
         NativeArray<float> _lift;         // 종류별 바닥에서 띄우는 높이 (캡슐은 중심이 가운데)
+        NativeArray<Matrix4x4> _arrowOut; // [team * MaxArrows + n]
+        NativeArray<int> _arrowCounts;
+        Mesh _arrowMesh;
+        readonly RenderParams[] _arrowRp = new RenderParams[2];
 
         public void Init(MatchController m)
         {
@@ -81,6 +85,10 @@ namespace KnifeWar.Game
 
             _out = new NativeArray<Matrix4x4>(m.Monsters.Capacity * Groups, Allocator.Persistent);
             _counts = new NativeArray<int>(Groups, Allocator.Persistent);
+            _arrowOut = new NativeArray<Matrix4x4>(2 * MonsterSim.MaxArrows, Allocator.Persistent);
+            _arrowCounts = new NativeArray<int>(2, Allocator.Persistent);
+            _arrowMesh = ProceduralMonsterMeshes.Arrow();
+            for (int team = 0; team < 2; team++) _arrowRp[team] = new RenderParams(_rp[team * Types].material) { worldBounds = bounds, shadowCastingMode = ShadowCastingMode.Off };
         }
 
         void OnDestroy()
@@ -89,6 +97,8 @@ namespace KnifeWar.Game
             if (_counts.IsCreated) _counts.Dispose();
             if (_scale.IsCreated) _scale.Dispose();
             if (_lift.IsCreated) _lift.Dispose();
+            if (_arrowOut.IsCreated) _arrowOut.Dispose();
+            if (_arrowCounts.IsCreated) _arrowCounts.Dispose();
         }
 
         bool _canDraw = true, _instancing = true;
@@ -117,6 +127,14 @@ namespace KnifeWar.Game
                 Lift = _lift,
                 Out = _out,
                 Counts = _counts,
+                ArrowAlive = s.ArrowAlive,
+                ArrowTeam = s.ArrowTeam,
+                ArrowPos = s.ArrowPos,
+                ArrowLat = s.ArrowLat,
+                ArrowVx = s.ArrowVx,
+                ArrowVy = s.ArrowVy,
+                ArrowOut = _arrowOut,
+                ArrowCounts = _arrowCounts,
             }.Run();
 
             int cap = s.Capacity;
@@ -136,6 +154,13 @@ namespace KnifeWar.Game
                     for (int i = 0; i < count; i++) Graphics.RenderMesh(_rp[g], mesh, 0, _out[g * cap + i]);
                 }
             }
+            for (int team = 0; team < 2; team++)
+            {
+                int count = _arrowCounts[team];
+                if (count == 0 || _arrowRp[team].material == null) continue;
+                if (_instancing) Graphics.RenderMeshInstanced(_arrowRp[team], _arrowMesh, 0, _arrowOut, count, team * MonsterSim.MaxArrows);
+                else for (int i = 0; i < count; i++) Graphics.RenderMesh(_arrowRp[team], _arrowMesh, 0, _arrowOut[team * MonsterSim.MaxArrows + i]);
+            }
         }
 
         [BurstCompile]
@@ -154,29 +179,58 @@ namespace KnifeWar.Game
             [ReadOnly] public NativeArray<float> Lift;
             public NativeArray<Matrix4x4> Out;
             public NativeArray<int> Counts;
+            [ReadOnly] public NativeArray<byte> ArrowAlive;
+            [ReadOnly] public NativeArray<byte> ArrowTeam;
+            [ReadOnly] public NativeArray<int> ArrowPos, ArrowLat, ArrowVx, ArrowVy;
+            public NativeArray<Matrix4x4> ArrowOut;
+            public NativeArray<int> ArrowCounts;
+
+            float Ground(float x)
+            {
+                float ax = math.abs(x);
+                return ax <= RampStart ? 0f : (ax >= RampEnd ? Floor2 : (ax - RampStart) / (RampEnd - RampStart) * Floor2);
+            }
 
             public void Execute()
             {
                 for (int g = 0; g < Groups; g++) Counts[g] = 0;
                 var face0 = quaternion.RotateY(math.PI * 0.5f);
                 var face1 = quaternion.RotateY(-math.PI * 0.5f);
+                var windupTilt = quaternion.RotateX(-0.3f);   // 준비: 뒤로 젖힘 (피하라는 신호)
+                var strikeTilt = quaternion.RotateX(0.25f);   // 공격: 앞으로 숙임
                 for (int m = 0; m < Capacity; m++)
                 {
                     if (Alive[m] == 0) continue;
                     int type = math.clamp(Type[m], 0, Types - 1);
                     int team = Team[m] == 0 ? 0 : 1;
-                    bool attacking = State[m] == 1;
+                    byte st = State[m];
+                    bool attacking = st == (byte)MonsterState.Attack;
+                    bool windup = st == (byte)MonsterState.Windup;
                     float bob = attacking
                         ? math.abs(math.sin(Time * 14f + m)) * 0.12f
-                        : math.abs(math.sin(Time * 9f + m * 0.37f)) * 0.07f;
+                        : windup ? 0.18f : math.abs(math.sin(Time * 9f + m * 0.37f)) * 0.07f;
                     float x = Pos[m] / 1000f - LaneHalf;
-                    float ax = math.abs(x);
-                    float ground = ax <= RampStart ? 0f : (ax >= RampEnd ? Floor2 : (ax - RampStart) / (RampEnd - RampStart) * Floor2);
-                    float3 p = new float3(x, ground + Lift[type] + bob, Lat[m] / 1000f);
+                    float3 p = new float3(x, Ground(x) + Lift[type] + bob, Lat[m] / 1000f);
+                    var face = team == 0 ? face0 : face1;
+                    var rot = windup ? math.mul(face, windupTilt) : attacking ? math.mul(face, strikeTilt) : face;
                     int g = team * Types + type;
                     int n = Counts[g];
-                    Out[g * Capacity + n] = (Matrix4x4)float4x4.TRS(p, team == 0 ? face0 : face1, Scale[type]);
+                    Out[g * Capacity + n] = (Matrix4x4)float4x4.TRS(p, rot, Scale[type]);
                     Counts[g] = n + 1;
+                }
+
+                ArrowCounts[0] = ArrowCounts[1] = 0;
+                for (int i = 0; i < MonsterSim.MaxArrows; i++)
+                {
+                    if (ArrowAlive[i] == 0) continue;
+                    int team = ArrowTeam[i] == 0 ? 0 : 1;
+                    float x = ArrowPos[i] / 1000f - LaneHalf;
+                    float3 p = new float3(x, Ground(x) + 1.3f, ArrowLat[i] / 1000f);
+                    float3 v = new float3(ArrowVx[i], 0f, ArrowVy[i]);
+                    var rot = math.lengthsq(v) > 0f ? quaternion.LookRotationSafe(v, math.up()) : quaternion.identity;
+                    int n = ArrowCounts[team];
+                    ArrowOut[team * MonsterSim.MaxArrows + n] = (Matrix4x4)float4x4.TRS(p, rot, new float3(1f, 1f, 1f));
+                    ArrowCounts[team] = n + 1;
                 }
             }
         }
@@ -248,6 +302,24 @@ namespace KnifeWar.Game
             mesh.CombineMeshes(parts.ToArray(), true, true);
             mesh.RecalculateBounds();
             _cache[type] = mesh;
+            return mesh;
+        }
+
+        static Mesh _arrow;
+
+        /// <summary>화살: 가는 막대(앞 +z, 길이 0.9m) + 촉.</summary>
+        public static Mesh Arrow()
+        {
+            if (_arrow != null) return _arrow;
+            EnsurePrims();
+            var parts = new List<CombineInstance>();
+            Add(parts, _cube, new Vector3(0f, 0f, 0f), new Vector3(0.04f, 0.04f, 0.9f));
+            Add(parts, _cube, new Vector3(0f, 0f, 0.47f), new Vector3(0.09f, 0.09f, 0.12f));
+            Add(parts, _cube, new Vector3(0f, 0.05f, -0.4f), new Vector3(0.02f, 0.1f, 0.14f));
+            var mesh = new Mesh { name = "Arrow" };
+            mesh.CombineMeshes(parts.ToArray(), true, true);
+            mesh.RecalculateBounds();
+            _arrow = mesh;
             return mesh;
         }
 

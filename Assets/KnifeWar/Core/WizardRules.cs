@@ -36,14 +36,14 @@ namespace KnifeWar.Core
         public readonly BuffSlot[] TeamField = { new BuffSlot(), new BuffSlot() };
         public readonly TeamBuildings[] Buildings = { new TeamBuildings(), new TeamBuildings() };
 
-        public WizardRules(int maxPlayers, int tickRate, int teamMonsterCap, float manaPerSecond = 12f)
+        public WizardRules(int maxPlayers, int tickRate, int teamMonsterCap, float manaPerSecond = CardDefs.ManaPerSecond)
         {
             MaxPlayers = maxPlayers;
             TickRate = tickRate;
             TeamMonsterCap = teamMonsterCap;
             _milliMana = new int[maxPlayers];
             _regenMilliPerTick = Math.Max(1, (int)Math.Round(manaPerSecond * 1000f / tickRate));
-            _wellMilliPerTick = Math.Max(1, (int)Math.Round(BuildingType.ManaWellPerSec * 1000f / tickRate));
+            _wellMilliPerTick = Math.Max(1, (int)Math.Round(BuildingType.ManaWellMilliPerSec / (float)tickRate));
             _deck = new byte[maxPlayers][];
             _hand = new byte[maxPlayers][];
             _cursor = new int[maxPlayers];
@@ -65,10 +65,26 @@ namespace KnifeWar.Core
         public byte Hand(int player, int slot) => slot >= 0 && slot < HandSize ? _hand[player][slot] : CardDefs.None;
         public byte NextCard(int player) => _deck[player][_cursor[player] % CardDefs.DeckSize];
 
-        public static int CostOf(int cardId) => CardDefs.IsValidId(cardId) ? CardDefs.Get(cardId).Cost : int.MaxValue;
+        public static int CostOf(int cardId) => CardDefs.IsValidId(cardId) || cardId == CardDefs.ResurrectId ? CardDefs.Get(cardId).Cost : int.MaxValue;
 
         public float Mana(int player) => _milliMana[player] / 1000f;
-        public bool CanAfford(int player, int cardId) => CardDefs.IsValidId(cardId) && _milliMana[player] >= CostOf(cardId) * 1000;
+        public bool CanAfford(int player, int cardId) => (CardDefs.IsValidId(cardId) || cardId == CardDefs.ResurrectId) && _milliMana[player] >= CostOf(cardId) * 1000;
+
+        /// <summary>현현: 마나 100으로 가장 오래 죽어 있던 아군 기사를 되살린다. 되살린 사람 번호를 revived 에.</summary>
+        public SummonResult TryResurrect(int player, RoundRules round, out int revived)
+        {
+            revived = -1;
+            if (round.Phase != RoundPhase.Live) return SummonResult.NotLive;
+            if (round.Class[player] != PlayerClass.King) return SummonResult.NotWizard;
+            if (!round.Alive[player]) return SummonResult.Dead;
+            if (_milliMana[player] < CardDefs.ResurrectCost * 1000) return SummonResult.NoMana;
+            int target = round.OldestDead(round.Team[player]);
+            if (target < 0) return SummonResult.NoDead;
+            if (!round.Revive(target)) return SummonResult.NoDead;
+            _milliMana[player] -= CardDefs.ResurrectCost * 1000;
+            revived = target;
+            return SummonResult.Ok;
+        }
 
         // ---- 클라이언트 미러 ----
 
@@ -175,7 +191,7 @@ namespace KnifeWar.Core
             }
         }
 
-        public enum SummonResult : byte { Ok, NotWizard, Dead, NotLive, NoMana, TeamCap, NoSlot, BadSlot, Limit }
+        public enum SummonResult : byte { Ok, NotWizard, Dead, NotLive, NoMana, TeamCap, NoSlot, BadSlot, Limit, NoDead }
 
         /// <summary>손패의 카드를 쓴다. 성공하면 효과(소환·건물·필드·버프)까지 적용하고 카드를 순환시킨다.</summary>
         public SummonResult TryPlay(int player, int handSlot, RoundRules round, MonsterSim sim, int tick, out int cardId)

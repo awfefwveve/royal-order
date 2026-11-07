@@ -14,7 +14,7 @@ namespace KnifeWar.Game
         public float Pitch;         // 도 (+ = 아래, Unity 카메라 기준)
         public KnifeAttack Attack;  // 이번에 누른 공격
         public sbyte Summon;        // -1 = 없음, 0~3 = 손패 카드 칸 (왕)
-        public bool Buff;           // (예전 Q 버프 — 지금은 카드로 대체, 프로토콜 호환용)
+        public bool Resurrect;      // 왕: 현현 (마나 100으로 죽은 아군 기사 되살리기)
         public sbyte PickClass;     // -1 = 없음, 0 = 희망 취소(기사), 1 = 왕 희망 (투표 라운드 준비 단계)
         public sbyte Vote;          // -1 = 없음, 0~11 = 그 칸에 투표, 127 = 투표 취소
     }

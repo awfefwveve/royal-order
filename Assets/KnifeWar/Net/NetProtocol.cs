@@ -31,7 +31,7 @@ namespace KnifeWar.Net
 
     public static class NetProtocol
     {
-        public const ushort Version = 7;   // 7: 왕 카드 (입장 때 덱, 스냅샷에 손패·필드·건물), 몬스터 7종
+        public const ushort Version = 8;   // 8: 현현(명령 플래그), 화살 이벤트, 몬스터 준비 상태
         public const ushort DefaultPort = 7777;
         public const int MaxCommandsPerPacket = 4;
         public const int CorrectionsPerSnapshot = 16;
@@ -48,7 +48,7 @@ namespace KnifeWar.Net
             if (i.Jump) flags |= 1;
             if (i.Crouch) flags |= 2;
             if (i.Walk) flags |= 4;
-            if (i.Buff) flags |= 8;
+            if (i.Resurrect) flags |= 8;
             w.Byte(flags);
             w.Float(i.Yaw);
             w.Float(i.Pitch);
@@ -71,7 +71,7 @@ namespace KnifeWar.Net
             i.Jump = (flags & 1) != 0;
             i.Crouch = (flags & 2) != 0;
             i.Walk = (flags & 4) != 0;
-            i.Buff = (flags & 8) != 0;
+            i.Resurrect = (flags & 8) != 0;
             i.Yaw = r.Float();
             i.Pitch = r.Float();
             i.Attack = (KnifeAttack)r.Byte();
@@ -158,6 +158,18 @@ namespace KnifeWar.Net
                 case GameEventType.Field:
                     w.Byte((byte)e.A); w.SByte((sbyte)e.B); w.Int(e.D);
                     break;
+                case GameEventType.Revive:
+                    w.Byte((byte)e.A); w.Byte((byte)e.B);
+                    break;
+                case GameEventType.ArrowSpawn:
+                    w.Int(e.A); w.Byte((byte)e.B); w.Int(e.C); w.Int(e.D); w.Short((short)e.E); w.Short((short)e.F); w.UShort((ushort)e.F1);
+                    break;
+                case GameEventType.ArrowEnd:
+                    w.Int(e.A); w.Byte((byte)e.B); w.Int(e.C); w.Int(e.D);
+                    break;
+                case GameEventType.MonsterParry:
+                    w.Byte((byte)e.A); w.Float(e.F1); w.Float(e.F2);
+                    break;
                 case GameEventType.Message:
                     w.Byte((byte)e.A); w.Byte((byte)e.B);
                     break;
@@ -198,6 +210,18 @@ namespace KnifeWar.Net
                     break;
                 case GameEventType.Field:
                     e.A = r.Byte(); e.B = r.SByte(); e.D = r.Int();
+                    break;
+                case GameEventType.Revive:
+                    e.A = r.Byte(); e.B = r.Byte();
+                    break;
+                case GameEventType.ArrowSpawn:
+                    e.A = r.Int(); e.B = r.Byte(); e.C = r.Int(); e.D = r.Int(); e.E = r.Short(); e.F = r.Short(); e.F1 = r.UShort();
+                    break;
+                case GameEventType.ArrowEnd:
+                    e.A = r.Int(); e.B = r.Byte(); e.C = r.Int(); e.D = r.Int();
+                    break;
+                case GameEventType.MonsterParry:
+                    e.A = r.Byte(); e.F1 = r.Float(); e.F2 = r.Float();
                     break;
                 case GameEventType.Message:
                     e.A = r.Byte(); e.B = r.Byte();

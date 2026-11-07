@@ -100,6 +100,7 @@ namespace KnifeWar.Game
         readonly sbyte[] _pendingCard = new sbyte[MaxPlayers];   // 손패 칸 (왕 카드 사용)
         readonly sbyte[] _pendingPick = new sbyte[MaxPlayers];
         readonly sbyte[] _pendingVote = new sbyte[MaxPlayers];
+        readonly bool[] _pendingResurrect = new bool[MaxPlayers];   // 왕 현현 (마나 100)
         readonly int[] _viewTick = new int[MaxPlayers];
         readonly float[] _viewAlpha = new float[MaxPlayers];
         readonly int[] _monsterViewTick = new int[MaxPlayers];
@@ -363,6 +364,7 @@ namespace KnifeWar.Game
                 _humanIntent = i;
                 if (i.Attack != KnifeAttack.None) _pendingAttack[HumanIndex] = i.Attack;
                 if (i.Summon >= 0) _pendingCard[HumanIndex] = i.Summon;
+                if (i.Resurrect) _pendingResurrect[HumanIndex] = true;
                 if (i.PickClass >= 0) _pendingPick[HumanIndex] = i.PickClass;
                 var h = Human;
                 h.LookYaw = i.Yaw;
@@ -532,6 +534,13 @@ namespace KnifeWar.Game
                         else if (r != WizardRules.SummonResult.Dead) Emit(new GameEvent { Type = GameEventType.Message, A = p, B = (int)SummonMessage(r) });
                     }
                     _pendingCard[p] = -1;
+                    if (_pendingResurrect[p])
+                    {
+                        _pendingResurrect[p] = false;
+                        var r = Wizard.TryResurrect(p, Round, out int revived);
+                        if (r == WizardRules.SummonResult.Ok) Revive(revived, p);
+                        else if (r != WizardRules.SummonResult.Dead) Emit(new GameEvent { Type = GameEventType.Message, A = p, B = (int)SummonMessage(r) });
+                    }
                 }
                 Wizard.Tick(tick, Round, Monsters);   // 마나 회복 + 병영 생산
                 Monsters.TeamFire[0] = (byte)(Wizard.FireActive(0, tick) ? 1 : 0);
@@ -539,7 +548,7 @@ namespace KnifeWar.Game
             }
             else
             {
-                for (int p = 0; p < MaxPlayers; p++) _pendingCard[p] = -1;
+                for (int p = 0; p < MaxPlayers; p++) { _pendingCard[p] = -1; _pendingResurrect[p] = false; }
             }
 
             for (int s = 0; s < Combat.Swings.Length; s++)
@@ -581,6 +590,7 @@ namespace KnifeWar.Game
             if (i.Summon >= 0) _pendingCard[p] = i.Summon;
             if (i.PickClass >= 0) _pendingPick[p] = i.PickClass;
             if (i.Vote >= 0) _pendingVote[p] = i.Vote;
+            if (i.Resurrect) _pendingResurrect[p] = true;
         }
 
         /// <summary>Intent.Vote 에 이 값이면 투표 취소.</summary>
@@ -611,6 +621,7 @@ namespace KnifeWar.Game
                 case WizardRules.SummonResult.TeamCap: return GameMessage.TeamCap;
                 case WizardRules.SummonResult.NotWizard: return GameMessage.NotKing;
                 case WizardRules.SummonResult.Limit: return GameMessage.Limit;
+                case WizardRules.SummonResult.NoDead: return GameMessage.NoDead;
                 default: return GameMessage.SummonFail;
             }
         }
@@ -684,6 +695,17 @@ namespace KnifeWar.Game
             Debug.Log($"[KnifeWar] kill t={Time.timeSinceLevelLoad:0.0}s {(attacker >= 0 ? Avatars[attacker].DisplayName : "-")} -> {a.DisplayName} ({GameText.How(how)})");
         }
 
+        /// <summary>현현: 죽은 기사를 성 1층에서 체력 가득으로 되살린다 (서버).</summary>
+        void Revive(int player, int byKing)
+        {
+            var a = Avatars[player];
+            Combat.Hp[player] = KnifeTuning.MaxHp;
+            a.SetAlive(true);
+            Spawn(player);
+            Emit(new GameEvent { Type = GameEventType.Revive, A = player, B = byKing });
+            Debug.Log($"[KnifeWar] revive t={Time.timeSinceLevelLoad:0.0}s {Avatars[byKing].DisplayName} -> {a.DisplayName}");
+        }
+
         // ---- 몬스터 ----
 
         public static int LaneX(float worldX) => MapLayout.LaneX(worldX);
@@ -706,15 +728,18 @@ namespace KnifeWar.Game
                 RewindTick = math.min(_monsterViewTick[sw.Attacker], Monsters.Tick - 1),
                 AttackerTeam = Combat.Teams[sw.Attacker],
             };
+            // 날아오는 화살 부수기 (몬스터를 맞추든 말든)
+            Monsters.CutArrows(_mq[0].AttackerTeam, _mq[0].Origin, _mq[0].Dir, _mq[0].RangeMm, _mq[0].RadiusMm);
             Monsters.QueryMelee(_mq, _mr);
             int slot = _mr[0];
             if (slot < 0) return;
-            Monsters.ApplyDamage(slot, def.Damage);
+            bool parried = Monsters.ApplyDamage(slot, def.Damage);
             Emit(new GameEvent
             {
                 Type = GameEventType.MonsterHit, A = sw.Attacker, C = def.Damage,
                 F1 = WorldX(Monsters.Pos[slot]), F2 = Monsters.Lat[slot] / 1000f,
             });
+            if (parried) Emit(new GameEvent { Type = GameEventType.MonsterParry, A = sw.Attacker, F1 = WorldX(Monsters.Pos[slot]), F2 = Monsters.Lat[slot] / 1000f });
         }
 
         void ApplyMonsterDamage()
@@ -754,6 +779,13 @@ namespace KnifeWar.Game
                 }
                 _prevAlive[m] = alive;
                 _prevState[m] = state;
+            }
+            for (int i = 0; i < MonsterSim.MaxArrows; i++)
+            {
+                if (s.ArrowEnd[i] != 0)
+                    Emit(new GameEvent { Type = GameEventType.ArrowEnd, A = s.ArrowId[i], B = s.ArrowEnd[i], C = s.ArrowPos[i], D = s.ArrowLat[i] });
+                else if (s.ArrowAlive[i] != 0 && s.ArrowSpawnTick[i] == s.Tick)
+                    Emit(new GameEvent { Type = GameEventType.ArrowSpawn, A = s.ArrowId[i], B = s.ArrowTeam[i], C = s.ArrowPos[i], D = s.ArrowLat[i], E = s.ArrowVx[i], F = s.ArrowVy[i], F1 = s.ArrowLife[i] });
             }
         }
 
@@ -847,6 +879,24 @@ namespace KnifeWar.Game
                 case GameEventType.MonsterDeath:
                     if (Role == NetRole.Client) Monsters.PuppetRemove(e.A);
                     break;
+                case GameEventType.ArrowSpawn:
+                    if (Role == NetRole.Client) Monsters.PuppetSpawnArrow(e.A, (byte)e.B, e.C, e.D, e.E, e.F, (int)e.F1);
+                    Feedback?.OnArrowShot(WorldX(e.C), e.D / 1000f);
+                    break;
+                case GameEventType.ArrowEnd:
+                    if (Role == NetRole.Client) Monsters.PuppetEndArrow(e.A, (byte)e.B);
+                    Feedback?.OnArrowEnd((byte)e.B, WorldX(e.C), e.D / 1000f);
+                    break;
+                case GameEventType.MonsterParry:
+                    Feedback?.OnParry(e.A, e.F1, e.F2);
+                    if (e.A == HumanIndex) ShowMessage(L.T("parry"));
+                    break;
+                case GameEventType.Revive:
+                    Feedback?.OnRevive(e.A);
+                    KillFeed.Add(new KillFeedEntry { Killer = Avatars[e.B].DisplayName, KillerTeam = Avatars[e.B].Team, Victim = Avatars[e.A].DisplayName, VictimTeam = Avatars[e.A].Team, How = L.T("how_revive"), Time = Time.time });
+                    if (e.A == HumanIndex) ShowMessage(L.T("revived_you"));
+                    else if (e.B == HumanIndex) ShowMessage(L.T("card_used", L.T("card_resurrect_name")));
+                    break;
             }
         }
 
@@ -884,11 +934,13 @@ namespace KnifeWar.Game
                 intent = _humanIntent;
                 intent.Attack = _pendingAttack[HumanIndex];
                 intent.Summon = _pendingCard[HumanIndex];
+                intent.Resurrect = _pendingResurrect[HumanIndex];
                 intent.PickClass = _pendingPick[HumanIndex];
                 intent.Vote = _pendingVote[HumanIndex];
             }
             _pendingAttack[HumanIndex] = KnifeAttack.None;
             _pendingCard[HumanIndex] = -1;
+            _pendingResurrect[HumanIndex] = false;
             _pendingPick[HumanIndex] = -1;
             _pendingVote[HumanIndex] = -1;
 
@@ -1111,6 +1163,7 @@ namespace KnifeWar.Game
         public void RequestPick(PlayerClass c) { if (HumanIndex >= 0) _pendingPick[HumanIndex] = (sbyte)c; }
         public void RequestVote(int slot) { if (HumanIndex >= 0) _pendingVote[HumanIndex] = slot < 0 ? VoteCancel : (sbyte)slot; }
         public void RequestCard(int handSlot) { if (HumanIndex >= 0 && handSlot >= 0 && handSlot < WizardRules.HandSize) _pendingCard[HumanIndex] = (sbyte)handSlot; }
+        public void RequestResurrect() { if (HumanIndex >= 0) _pendingResurrect[HumanIndex] = true; }
 
         public void ShowMessage(string msg)
         {

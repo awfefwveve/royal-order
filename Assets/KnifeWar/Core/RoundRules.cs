@@ -89,6 +89,7 @@ namespace KnifeWar.Core
             Team = new byte[MaxPlayers];
             Connected = new bool[MaxPlayers];
             Alive = new bool[MaxPlayers];
+            DeadTick = new int[MaxPlayers];
             Class = new PlayerClass[MaxPlayers];
             _pick = new PlayerClass?[MaxPlayers];
             _vote = new int[MaxPlayers];
@@ -141,7 +142,31 @@ namespace KnifeWar.Core
 
         public void Kill(int player)
         {
-            if (Phase == RoundPhase.Live) Alive[player] = false;
+            if (Phase == RoundPhase.Live) { Alive[player] = false; DeadTick[player] = _tick; }
+        }
+
+        /// <summary>죽은 틱 (현현 때 가장 오래 죽어 있던 기사부터).</summary>
+        public readonly int[] DeadTick;
+        int _tick;
+
+        /// <summary>왕의 현현: 죽은 아군 기사를 되살린다. 라운드 중·접속 중·기사만. 성공하면 true.</summary>
+        public bool Revive(int player)
+        {
+            if (Phase != RoundPhase.Live || !Connected[player] || Alive[player] || Class[player] != PlayerClass.Knight) return false;
+            Alive[player] = true;
+            return true;
+        }
+
+        /// <summary>팀에서 되살릴 기사: 가장 오래 죽어 있던 사람. 없으면 -1.</summary>
+        public int OldestDead(int team)
+        {
+            int best = -1;
+            for (int i = 0; i < MaxPlayers; i++)
+            {
+                if (Team[i] != team || !Connected[i] || Alive[i] || Class[i] != PlayerClass.Knight) continue;
+                if (best < 0 || DeadTick[i] < DeadTick[best]) best = i;
+            }
+            return best;
         }
 
         public void SetConnected(int player, bool connected)
@@ -155,6 +180,7 @@ namespace KnifeWar.Core
         /// </summary>
         public void Tick(int tick, Func<int> tieBreak = null)
         {
+            _tick = tick;
             switch (Phase)
             {
                 case RoundPhase.WaitingForPlayers:

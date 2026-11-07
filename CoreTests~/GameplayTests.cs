@@ -232,6 +232,79 @@ public static class Program2 {
       sim2.Dispose();
     }
 
+    Console.WriteLine("[몬스터 공격은 확정타가 아님: 준비 → 피하기·쳐내기, 화살은 느리고 부술 수 있음]");
+    {
+      var lane = LaneConfig.Default;
+      // 졸병 앞에 기사 (사거리 안): 준비 동작 0.5초 뒤에 맞는다
+      var sim = new MonsterSim(64, TR, lane);
+      sim.PrepareTick(); sim.TrySpawn(0, MonsterDefs.Footman, out int fm);
+      int px = sim.Pos[fm] + 700;   // 사거리 600 + 반지름 400 + 플레이어 350 안
+      int ticksToHit = -1, windupSeen = -1;
+      for (int i = 0; i < TR * 3; i++)
+      {
+        sim.PrepareTick(); sim.SetPlayer(0, px, sim.Lat[fm], 1, true); sim.Step();
+        if (windupSeen < 0 && sim.State[fm] == (byte)MonsterState.Windup) windupSeen = i;
+        if (sim.PlayerDamage[0] > 0) { ticksToHit = i; break; }
+      }
+      int wind = MonsterDefs.Create(TR, Unity.Collections.Allocator.Temp)[MonsterDefs.Footman].WindupTicks;
+      Check(windupSeen >= 0 && windupSeen < ticksToHit, $"준비 상태(Windup)가 먼저 보임 (tick {windupSeen})");
+      Check(ticksToHit >= wind && ticksToHit <= wind + 3, $"준비 {wind}틱 뒤에 맞음 (got {ticksToHit})");
+      // 피하기: 준비 중에 사거리 밖으로 나가면 헛침
+      var sim2 = new MonsterSim(64, TR, lane);
+      sim2.PrepareTick(); sim2.TrySpawn(0, MonsterDefs.Footman, out int fm2);
+      int px2 = sim2.Pos[fm2] + 700; bool hit2 = false;
+      for (int i = 0; i < TR * 3; i++)
+      {
+        sim2.PrepareTick();
+        bool dodge = sim2.State[fm2] == (byte)MonsterState.Windup;   // 준비 보이면 바로 뒤로
+        sim2.SetPlayer(0, dodge ? px2 + 3000 : px2, sim2.Lat[fm2], 1, true);
+        sim2.Step();
+        if (sim2.PlayerDamage[0] > 0) { hit2 = true; break; }
+      }
+      Check(!hit2, "준비 동작 보고 사거리 밖으로 피하면 안 맞음");
+      // 쳐내기: 준비 중에 칼로 때리면 취소 + 한 박자 쉼
+      var sim3 = new MonsterSim(64, TR, lane);
+      sim3.PrepareTick(); sim3.TrySpawn(0, MonsterDefs.Footman, out int fm3);
+      int px3 = sim3.Pos[fm3] + 700; bool parried = false, hit3 = false; int parryTick = -1;
+      for (int i = 0; i < wind + 5; i++)
+      {
+        sim3.PrepareTick(); sim3.SetPlayer(0, px3, sim3.Lat[fm3], 1, true);
+        if (!parried && sim3.Windup[fm3] > 0) { parried = sim3.ApplyDamage(fm3, 10); parryTick = i; }
+        sim3.Step();
+        if (sim3.PlayerDamage[0] > 0) hit3 = true;
+      }
+      Check(parried && !hit3, $"준비 중 칼에 맞으면 공격 취소(쳐냄) (parry at {parryTick})");
+      Check(sim3.Cooldown[fm3] > 0 || sim3.Windup[fm3] > 0, "쳐낸 뒤 바로 다시 못 때림 (쿨다운)");
+      // 궁수: 준비 뒤 화살이 생기고 천천히 날아가 맞는다; 칼로 부술 수 있다
+      var sim4 = new MonsterSim(64, TR, lane);
+      sim4.PrepareTick(); sim4.TrySpawn(0, MonsterDefs.Archer, out int ar);
+      int px4 = sim4.Pos[ar] + 5000; int arrowSeen = -1, arrowHit = -1;
+      for (int i = 0; i < TR * 4; i++)
+      {
+        sim4.PrepareTick(); sim4.SetPlayer(0, px4, sim4.Lat[ar], 1, true); sim4.Step();
+        if (arrowSeen < 0) for (int k = 0; k < MonsterSim.MaxArrows; k++) if (sim4.ArrowAlive[k] != 0) { arrowSeen = i; break; }
+        if (sim4.PlayerDamage[0] > 0) { arrowHit = i; break; }
+      }
+      Check(arrowSeen >= 0 && arrowHit > arrowSeen + TR / 4, $"화살이 생기고(tick {arrowSeen}) 최소 0.25초 날아간 뒤 맞음 (tick {arrowHit})");
+      var sim5 = new MonsterSim(64, TR, lane);
+      sim5.PrepareTick(); sim5.TrySpawn(0, MonsterDefs.Archer, out int ar5);
+      int px5 = sim5.Pos[ar5] + 5000; int cuts = 0; bool hit5 = false, endFlag = false;
+      for (int i = 0; i < TR * 4; i++)
+      {
+        sim5.PrepareTick(); sim5.SetPlayer(0, px5, sim5.Lat[ar5], 1, true);
+        // 화살이 1m 안으로 오면 앞으로 휘두른다
+        for (int k = 0; k < MonsterSim.MaxArrows; k++)
+          if (sim5.ArrowAlive[k] != 0 && Math.Abs(sim5.ArrowPos[k] - px5) < 1200)
+          { cuts += sim5.CutArrows(1, new Unity.Mathematics.float2(px5, sim5.Lat[ar5]), new Unity.Mathematics.float2(-1f, 0f), 1600f, 300f); break; }
+        for (int k = 0; k < MonsterSim.MaxArrows; k++) if (sim5.ArrowEnd[k] == ArrowEndReason.Cut) endFlag = true;   // 그 틱 안에서 보임 (다음 PrepareTick 에 지워짐)
+        sim5.Step();
+        if (sim5.PlayerDamage[0] > 0) { hit5 = true; break; }
+      }
+      Check(cuts > 0 && !hit5, $"날아오는 화살을 칼로 쳐서 부숨 (cut {cuts})");
+      Check(endFlag, "부순 화살은 ArrowEnd=Cut 으로 표시 (클라 연출용)");
+      sim.Dispose(); sim2.Dispose(); sim3.Dispose(); sim4.Dispose(); sim5.Dispose();
+    }
+
     Console.WriteLine("[왕 · 카드]");
     {
       var r = new RoundRules(RoundConfig.Default, TR);
@@ -295,11 +368,13 @@ public static class Program2 {
       Check(distinct == 8, $"손패 4칸을 돌아가며 8번 쓰면 덱 8장이 모두 한 번씩 (got {distinct})");
       int dup = 0; foreach (var n in seen) if (n > 1) dup++;
       Check(dup == 0, "같은 카드가 두 번 나오지 않음 (손패와 덱이 겹치지 않음)");
-      // 마나 회복: 3초 → +36
+      // 마나 회복: 5.5/초 → 빈 마나에서 오우거(60)까지 약 11초
       var w3 = new WizardRules(12, TR, teamMonsterCap: 5);
-      w3.ResetForRound(1, 1, 30);
-      for (int i = 0; i < TR * 3; i++) w3.Tick(i, r);
-      Check(Math.Abs(w3.Mana(0) - 66f) < 0.6f, $"3초 회복 (+36) → 약 66 (got {w3.Mana(0):F1})");
+      w3.ResetForRound(1, 1, 0);
+      int ticksTo60 = -1;
+      for (int i = 0; i < TR * 20; i++) { w3.Tick(i, r); if (ticksTo60 < 0 && w3.Mana(0) >= 60f) ticksTo60 = i; }
+      Check(ticksTo60 > 0 && Math.Abs(ticksTo60 / (float)TR - 60f / CardDefs.ManaPerSecond) < 0.2f, $"0 → 60 마나(오우거)까지 약 {60f / CardDefs.ManaPerSecond:F1}초 (got {ticksTo60 / (float)TR:F1}s)");
+      Check(CardDefs.Get(3).Cost == 60 && CardDefs.ResurrectCost == 100, "오우거 60 · 현현 100");
       Check(Math.Abs(w3.Mana(2)) < 0.01f || w3.Mana(2) == 30f, "기사는 마나가 안 찬다");
       // 팀 상한
       var w4 = new WizardRules(12, TR, teamMonsterCap: 5);
@@ -333,7 +408,21 @@ public static class Program2 {
       Check(sim5.AliveInTeam(0) == before + barracks, $"13초 뒤 병영 {barracks}개 → 졸병 {barracks} (got {sim5.AliveInTeam(0) - before})");
       w5.SetManaMirror(0, 0f);
       for (int i = 0; i < TR; i++) w5.Tick(t + i, r);
-      Check(Math.Abs(w5.Mana(0) - 18f) < 0.6f, $"우물 2개: 1초 회복 12+6 = 18 (got {w5.Mana(0):F1})");
+      Check(Math.Abs(w5.Mana(0) - 8.5f) < 0.6f, $"우물 2개: 1초 회복 5.5+3 = 8.5 (got {w5.Mana(0):F1})");
+      // 현현: 마나 100으로 가장 오래 죽은 아군 기사부터 되살림
+      var w8 = new WizardRules(12, TR, teamMonsterCap: 5);
+      w8.ResetForRound(1, 1, 30);
+      r.Kill(2); r.Tick(t++); r.Kill(3); r.Tick(t++);
+      Check(w8.TryResurrect(0, r, out _) == WizardRules.SummonResult.NoMana, "마나 30 → 현현 불가");
+      w8.SetManaMirror(0, 100f);
+      var rr8 = w8.TryResurrect(0, r, out int revived);
+      Check(rr8 == WizardRules.SummonResult.Ok && revived == 2 && r.Alive[2] && !r.Alive[3], $"현현 → 먼저 죽은 2번부터 (got {rr8}, {revived})");
+      Check(Math.Abs(w8.Mana(0)) < 0.01f, "현현 뒤 마나 0");
+      w8.SetManaMirror(0, 100f);
+      Check(w8.TryResurrect(0, r, out revived) == WizardRules.SummonResult.Ok && revived == 3 && r.Alive[3], "두 번째 현현 → 3번");
+      w8.SetManaMirror(0, 100f); var rr9 = w8.TryResurrect(0, r, out int rv9);
+      Check(rr9 == WizardRules.SummonResult.NoDead, $"되살릴 기사가 없으면 NoDead (got {rr9} {rv9}, alive {string.Join(",", r.Alive)})");
+      Check(w8.TryResurrect(2, r, out _) == WizardRules.SummonResult.NotWizard, "기사는 현현 못 함");
       // 볼케이노: 필드 60초 + 화염 골렘 + 화염 속성 속도 증가
       var w6 = new WizardRules(12, TR, teamMonsterCap: 100);
       w6.SetDeck(0, new byte[] { 6, 0, 0, 1, 1, 2, 2, 3 });

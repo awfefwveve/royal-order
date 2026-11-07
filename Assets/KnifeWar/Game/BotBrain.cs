@@ -159,8 +159,15 @@ namespace KnifeWar.Game
 
             if (now >= _nextSummon)
             {
-                // 손패 중 마나로 쓸 수 있는 카드를 고른다 (비싼 카드도 가끔 기다렸다가 쓴다)
                 float mana = m.Wizard.Mana(_me.Index);
+                // 죽은 기사가 있고 마나가 차면 현현부터 (대부분)
+                if (mana >= CardDefs.ResurrectCost && m.Round.OldestDead(_me.Team) >= 0 && Rand(0f, 1f) < 0.8f)
+                {
+                    i.Resurrect = true;
+                    _nextSummon = now + Rand(0.6f, 1.5f);
+                    return i;
+                }
+                // 손패 중 마나로 쓸 수 있는 카드를 고른다 (비싼 카드도 가끔 기다렸다가 쓴다)
                 int pick = -1, n = 0;
                 bool saving = Rand(0f, 1f) < 0.3f;   // 30%: 비싼 카드를 위해 모은다
                 for (int slot = 0; slot < WizardRules.HandSize; slot++)

@@ -311,7 +311,7 @@ namespace KnifeWar.Game
         {
             float mana = _m.Wizard.Mana(me.Index);
             float cw = CardUi.W, ch = CardUi.H, gap = 10f;
-            float totalW = WizardRules.HandSize * cw + (WizardRules.HandSize - 1) * gap;
+            float totalW = (WizardRules.HandSize + 1) * cw + WizardRules.HandSize * gap + 14f;   // 손패 4 + 현현 1
             float x0 = w * 0.5f - totalW * 0.5f + 60f, y0 = h - ch - 56f;
 
             // 바탕 + 마나 막대
@@ -334,6 +334,20 @@ namespace KnifeWar.Game
                 var r = new Rect(x0 + slot * (cw + gap), y0, cw, ch);
                 if (ok) r.y -= 6f;   // 쓸 수 있는 카드는 살짝 올라온다
                 if (CardUi.Draw(r, id, ok, (slot + 1).ToString()) && ok) _m.RequestCard(slot);
+            }
+
+            // 현현 (항상 있는 고정 능력, 마나 100): 손패 오른쪽에 조금 떨어져서
+            {
+                bool anyDead = false;
+                for (int p = 0; p < MatchController.MaxPlayers; p++)
+                {
+                    var a = _m.Avatars[p];
+                    if (a.Team == me.Team && !a.Alive && a.Class == PlayerClass.Knight && _m.Round.Connected[p]) { anyDead = true; break; }
+                }
+                bool ok = me.Alive && anyDead && _m.Wizard.CanAfford(me.Index, CardDefs.ResurrectId);
+                var r = new Rect(x0 + WizardRules.HandSize * (cw + gap) + 14f, y0, cw, ch);
+                if (ok) r.y -= 6f;
+                if (CardUi.Draw(r, CardDefs.ResurrectId, ok, "5") && ok) _m.RequestResurrect();
             }
 
             // 마나 부족 등 안내는 공용 메시지 줄(LastSummonMessage)로

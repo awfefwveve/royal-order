@@ -30,10 +30,10 @@ namespace KnifeWar.Core
     public static class BuildingType
     {
         public const byte Barracks = 0;   // 12초마다 졸병 1 (건물 수만큼)
-        public const byte ManaWell = 1;   // 왕 마나 회복 +3/초 (건물 수만큼)
+        public const byte ManaWell = 1;   // 왕 마나 회복 +1.5/초 (건물 수만큼)
         public const int Count = 2;
         public const int BarracksIntervalSec = 12;
-        public const int ManaWellPerSec = 3;
+        public const int ManaWellMilliPerSec = 1500;
     }
 
     /// <summary>필드 효과 id (TeamField).</summary>
@@ -55,6 +55,7 @@ namespace KnifeWar.Core
     /// <summary>
     /// 왕 카드 전체 목록 + 덱 규칙. 수치는 전부 임시 (밸런스는 플레이테스트로).
     /// 덱 8장, 손패 4장, 같은 카드 최대 2장. 쓴 카드는 덱 맨 뒤로 돌아가고 다음 카드를 뽑는다.
+    /// 마나: 기본 회복 5.5/초 → 빈 상태에서 오우거(60)를 약 11초마다, 현현(100)은 약 18초마다.
     /// </summary>
     public static class CardDefs
     {
@@ -62,20 +63,27 @@ namespace KnifeWar.Core
         public const int HandSize = 4;
         public const int MaxCopies = 2;
         public const byte None = 255;
+        /// <summary>항상 쓸 수 있는 고정 능력 "현현": 마나 100으로 죽은 아군 기사 1명을 성에서 되살린다 (손패 밖, 5번 키).</summary>
+        public const byte ResurrectId = 200;
+        public const int ResurrectCost = 100;
+        public const float ManaPerSecond = 5.5f;
 
         public static readonly CardDef[] All =
         {
             new CardDef { Id = 0, Key = "footman",   Kind = CardKind.Summon,   MonsterType = 0, Cost = 10 },
             new CardDef { Id = 1, Key = "shield",    Kind = CardKind.Summon,   MonsterType = 1, Cost = 20 },
             new CardDef { Id = 2, Key = "archer",    Kind = CardKind.Summon,   MonsterType = 2, Cost = 15 },
-            new CardDef { Id = 3, Key = "ogre",      Kind = CardKind.Summon,   MonsterType = 3, Cost = 35 },
-            new CardDef { Id = 4, Key = "twinogre",  Kind = CardKind.Summon,   MonsterType = 4, Cost = 50 },
-            new CardDef { Id = 5, Key = "deathknight", Kind = CardKind.Summon, MonsterType = 5, Cost = 60, Attr = MonsterAttr.Dark },
-            new CardDef { Id = 6, Key = "volcano",   Kind = CardKind.Field,    MonsterType = 6, Cost = 80, Param = (byte)FieldType.Volcano, DurationSec = 60, TeamLimit = 1, Attr = MonsterAttr.Fire },
+            new CardDef { Id = 3, Key = "ogre",      Kind = CardKind.Summon,   MonsterType = 3, Cost = 60 },
+            new CardDef { Id = 4, Key = "twinogre",  Kind = CardKind.Summon,   MonsterType = 4, Cost = 80 },
+            new CardDef { Id = 5, Key = "deathknight", Kind = CardKind.Summon, MonsterType = 5, Cost = 70, Attr = MonsterAttr.Dark },
+            new CardDef { Id = 6, Key = "volcano",   Kind = CardKind.Field,    MonsterType = 6, Cost = 90, Param = (byte)FieldType.Volcano, DurationSec = 60, TeamLimit = 1, Attr = MonsterAttr.Fire },
             new CardDef { Id = 7, Key = "barracks",  Kind = CardKind.Building, Cost = 45, Param = BuildingType.Barracks, TeamLimit = 3 },
             new CardDef { Id = 8, Key = "manawell",  Kind = CardKind.Building, Cost = 30, Param = BuildingType.ManaWell, TeamLimit = 2 },
             new CardDef { Id = 9, Key = "warhorn",   Kind = CardKind.Buff,     Cost = 25, Param = (byte)BuffType.WarHorn, DurationSec = 8 },
         };
+
+        /// <summary>현현 (카드 목록 밖, 그리기·설명용).</summary>
+        public static readonly CardDef Resurrect = new CardDef { Id = ResurrectId, Key = "resurrect", Kind = CardKind.Buff, Cost = ResurrectCost };
 
         public static int Count => All.Length;
 
@@ -84,7 +92,7 @@ namespace KnifeWar.Core
 
         public static bool IsValidId(int id) => id >= 0 && id < All.Length;
 
-        public static ref readonly CardDef Get(int id) => ref All[id];
+        public static ref readonly CardDef Get(int id) => ref id == ResurrectId ? ref Resurrect : ref All[id];
 
         /// <summary>덱이 규칙에 맞나 (8장, 전부 있는 카드, 같은 카드 2장 이하).</summary>
         public static bool IsValidDeck(byte[] deck)

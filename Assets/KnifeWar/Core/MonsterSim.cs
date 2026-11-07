@@ -10,6 +10,13 @@ namespace KnifeWar.Core
     {
         Move = 0,
         Attack = 1,
+        Windup = 2,   // 플레이어를 치려고 준비 동작 중 (피하거나 쳐낼 수 있는 틈)
+    }
+
+    /// <summary>화살이 끝난 이유 (ArrowEnd).</summary>
+    public static class ArrowEndReason
+    {
+        public const byte None = 0, Hit = 1, Cut = 2, Expired = 3;
     }
 
     /// <summary>틱마다 집계되는 카운터 인덱스.</summary>
@@ -77,6 +84,23 @@ namespace KnifeWar.Core
         /// <summary>팀별 화염 필드(볼케이노) 활성 여부. 화염 속성 몬스터의 속도·소환 체력이 오른다. 매 틱 바깥에서 넣는다.</summary>
         public NativeArray<byte> TeamFire;
 
+        // ---- 플레이어 공격 준비 (확정타 없음: 준비 동작 뒤 아직 사거리 안이어야 맞는다, 준비 중 칼에 맞으면 취소) ----
+        public NativeArray<int> Windup;          // 남은 준비 틱 (0 = 준비 중 아님)
+        public NativeArray<int> WindupPlayer;    // 준비 중인 대상 플레이어
+
+        // ---- 화살 (궁수가 플레이어에게 쏨; 천천히 날아가 피하거나 칼로 부술 수 있다) ----
+        public const int MaxArrows = 256;
+        public NativeArray<byte> ArrowAlive;
+        public NativeArray<byte> ArrowTeam;
+        public NativeArray<int> ArrowPos, ArrowLat;   // 레인 좌표 mm
+        public NativeArray<int> ArrowVx, ArrowVy;     // mm/틱
+        public NativeArray<int> ArrowLife;            // 남은 틱 (0 이면 소멸)
+        public NativeArray<int> ArrowDamage;
+        public NativeArray<int> ArrowId;              // 이벤트용 번호 (서버가 매김)
+        public NativeArray<int> ArrowSpawnTick;
+        public NativeArray<byte> ArrowEnd;            // 이번 틱에 끝난 이유 (ArrowEndReason), PrepareTick 에서 0
+        NativeArray<int> _arrowNextId;                // [0] = 다음 번호 (잡 안에서 증가)
+
         // ---- 공간 분할 (팀별) ----
         public NativeArray<int> CellStart;  // [team * (CellCount + 1) + cell]
         public NativeArray<int> CellItems;  // [team * Capacity + i]
@@ -125,6 +149,21 @@ namespace KnifeWar.Core
             PlayerDamage = new NativeArray<int>(MaxSimPlayers, p);
             TargetPlayer = new NativeArray<int>(capacity, p);
             TeamFire = new NativeArray<byte>(2, p);
+            Windup = new NativeArray<int>(capacity, p);
+            WindupPlayer = new NativeArray<int>(capacity, p);
+            ArrowAlive = new NativeArray<byte>(MaxArrows, p);
+            ArrowTeam = new NativeArray<byte>(MaxArrows, p);
+            ArrowPos = new NativeArray<int>(MaxArrows, p);
+            ArrowLat = new NativeArray<int>(MaxArrows, p);
+            ArrowVx = new NativeArray<int>(MaxArrows, p);
+            ArrowVy = new NativeArray<int>(MaxArrows, p);
+            ArrowLife = new NativeArray<int>(MaxArrows, p);
+            ArrowDamage = new NativeArray<int>(MaxArrows, p);
+            ArrowId = new NativeArray<int>(MaxArrows, p);
+            ArrowSpawnTick = new NativeArray<int>(MaxArrows, p);
+            ArrowEnd = new NativeArray<byte>(MaxArrows, p);
+            _arrowNextId = new NativeArray<int>(1, p);
+            _arrowNextId[0] = 1;
 
             int stride = lane.CellCount + 1;
             CellStart = new NativeArray<int>(2 * stride, p);
@@ -143,6 +182,7 @@ namespace KnifeWar.Core
             Tick++;
             for (int i = 0; i < SimCounter.Count; i++) Counters[i] = 0;
             for (int i = 0; i < MaxSimPlayers; i++) PlayerDamage[i] = 0;
+            for (int i = 0; i < MaxArrows; i++) ArrowEnd[i] = 0;
         }
 
         /// <summary>플레이어 위치 갱신 (매 틱 Step 전에). 레인 좌표 mm.</summary>
@@ -185,6 +225,8 @@ namespace KnifeWar.Core
             Target[s] = -1;
             TargetPlayer[s] = -1;
             SpawnTick[s] = Tick;
+            Windup[s] = 0;
+            WindupPlayer[s] = -1;
 
             _aliveTeam[team]++;
             Counters[SimCounter.SpawnEvents]++;
@@ -232,6 +274,8 @@ namespace KnifeWar.Core
             Lat[slot] = lat;
             State[slot] = state;
             Hp[slot] = SpawnHp(Defs[type], TeamFire[team] != 0);
+            Windup[slot] = 0;
+            WindupPlayer[slot] = -1;
             _aliveTeam[team]++;
         }
 
@@ -273,6 +317,14 @@ namespace KnifeWar.Core
                 Pos[m] = pos;
                 Lat[m] = (short)lat;
             }
+            // 화살은 서버와 같은 직선 비행 (끝은 서버가 알려줌, 수명만 안전장치)
+            for (int i = 0; i < MaxArrows; i++)
+            {
+                if (ArrowAlive[i] == 0) continue;
+                ArrowPos[i] += ArrowVx[i];
+                ArrowLat[i] += ArrowVy[i];
+                if (--ArrowLife[i] <= 0) ArrowAlive[i] = 0;
+            }
         }
 
         /// <summary>
@@ -308,12 +360,72 @@ namespace KnifeWar.Core
         /// <summary>앞쪽 방향 (+1 / -1): 목적지 쪽. 같은 위치면 원래 진행 방향.</summary>
         public static int Heading(int team, int pos, int goal) => goal > pos ? 1 : goal < pos ? -1 : (team == 0 ? 1 : -1);
 
-        /// <summary>외부 데미지 (기사 칼 등). 다음 Step에서 체력 0 이하면 제거된다.</summary>
-        public void ApplyDamage(int slot, int damage)
+        /// <summary>외부 데미지 (기사 칼 등). 다음 Step에서 체력 0 이하면 제거된다. 공격 준비 중이었으면 취소(쳐냄) → true.</summary>
+        public bool ApplyDamage(int slot, int damage)
         {
             Complete();
-            if (slot < 0 || slot >= Capacity || Alive[slot] == 0) return;
+            if (slot < 0 || slot >= Capacity || Alive[slot] == 0) return false;
             Hp[slot] = Hp[slot] - damage;
+            if (Windup[slot] > 0)
+            {
+                Windup[slot] = 0;
+                WindupPlayer[slot] = -1;
+                Cooldown[slot] = Defs[Type[slot]].AttackIntervalTicks;   // 휘청: 다시 준비하려면 한 박자 쉬어야
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 칼 스윙으로 날아오는 화살 부수기 (랙 보정 없음 — 화살은 느려서 현재 위치로 충분). 부순 개수.
+        /// 레인 좌표 mm, dir 은 단위 벡터.
+        /// </summary>
+        public int CutArrows(byte attackerTeam, float2 origin, float2 dir, float rangeMm, float radiusMm)
+        {
+            Complete();
+            int cut = 0;
+            float2 ab = math.normalizesafe(dir) * rangeMm;
+            float len2 = math.lengthsq(ab);
+            float r = radiusMm + 150f;
+            for (int i = 0; i < MaxArrows; i++)
+            {
+                if (ArrowAlive[i] == 0 || ArrowTeam[i] == attackerTeam) continue;
+                // 지금 위치와 다음 틱 위치 사이 선분 vs 스윙 선분 — 간단히 두 점 모두 검사
+                for (int k = 0; k < 2; k++)
+                {
+                    float2 pt = new float2(ArrowPos[i] + ArrowVx[i] * k, ArrowLat[i] + ArrowVy[i] * k);
+                    float t = len2 > 0f ? math.saturate(math.dot(pt - origin, ab) / len2) : 0f;
+                    float2 closest = origin + ab * t;
+                    if (math.lengthsq(pt - closest) <= r * r)
+                    {
+                        ArrowAlive[i] = 0;
+                        ArrowEnd[i] = ArrowEndReason.Cut;
+                        cut++;
+                        break;
+                    }
+                }
+            }
+            return cut;
+        }
+
+        /// <summary>클라 미러: 서버가 알려준 화살 생성.</summary>
+        public void PuppetSpawnArrow(int id, byte team, int pos, int lat, int vx, int vy, int life)
+        {
+            Complete();
+            int s = -1;
+            for (int i = 0; i < MaxArrows; i++) if (ArrowAlive[i] == 0) { s = i; break; }
+            if (s < 0) return;
+            ArrowAlive[s] = 1; ArrowTeam[s] = team; ArrowPos[s] = pos; ArrowLat[s] = lat;
+            ArrowVx[s] = vx; ArrowVy[s] = vy; ArrowLife[s] = life; ArrowId[s] = id; ArrowSpawnTick[s] = Tick; ArrowEnd[s] = 0;
+        }
+
+        /// <summary>클라 미러: 화살 끝 (맞음·쳐냄·소멸). 슬롯 번호 반환 (연출용), 없으면 -1.</summary>
+        public int PuppetEndArrow(int id, byte reason)
+        {
+            Complete();
+            for (int i = 0; i < MaxArrows; i++)
+                if (ArrowAlive[i] != 0 && ArrowId[i] == id) { ArrowAlive[i] = 0; ArrowEnd[i] = reason; return i; }
+            return -1;
         }
 
         /// <summary>한 틱 시뮬레이션 (스케줄 + 완료).</summary>
@@ -362,6 +474,7 @@ namespace KnifeWar.Core
                 PlayerAlive = PlayerAlive,
                 PlayerKing = PlayerKing,
                 TargetPlayer = TargetPlayer,
+                Windup = Windup,
             }.Schedule(Capacity, 256, grid);
 
             var move = new MoveJob
@@ -398,6 +511,30 @@ namespace KnifeWar.Core
                 Cooldown = Cooldown,
                 Counters = Counters,
                 PlayerDamage = PlayerDamage,
+                Tick = Tick,
+                Lane = Lane,
+                Team = Team,
+                Pos = Pos,
+                Lat = Lat,
+                PlayerCount = PlayerCount,
+                PlayerPos = PlayerPos,
+                PlayerLat = PlayerLat,
+                PlayerTeam = PlayerTeam,
+                PlayerAlive = PlayerAlive,
+                Windup = Windup,
+                WindupPlayer = WindupPlayer,
+                ArrowAlive = ArrowAlive,
+                ArrowTeam = ArrowTeam,
+                ArrowPos = ArrowPos,
+                ArrowLat = ArrowLat,
+                ArrowVx = ArrowVx,
+                ArrowVy = ArrowVy,
+                ArrowLife = ArrowLife,
+                ArrowDamage = ArrowDamage,
+                ArrowId = ArrowId,
+                ArrowSpawnTick = ArrowSpawnTick,
+                ArrowEnd = ArrowEnd,
+                ArrowNextId = _arrowNextId,
             }.Schedule(move);
 
             var death = new DeathJob
@@ -485,6 +622,20 @@ namespace KnifeWar.Core
             if (PlayerDamage.IsCreated) PlayerDamage.Dispose();
             if (TargetPlayer.IsCreated) TargetPlayer.Dispose();
             if (TeamFire.IsCreated) TeamFire.Dispose();
+            if (Windup.IsCreated) Windup.Dispose();
+            if (WindupPlayer.IsCreated) WindupPlayer.Dispose();
+            if (ArrowAlive.IsCreated) ArrowAlive.Dispose();
+            if (ArrowTeam.IsCreated) ArrowTeam.Dispose();
+            if (ArrowPos.IsCreated) ArrowPos.Dispose();
+            if (ArrowLat.IsCreated) ArrowLat.Dispose();
+            if (ArrowVx.IsCreated) ArrowVx.Dispose();
+            if (ArrowVy.IsCreated) ArrowVy.Dispose();
+            if (ArrowLife.IsCreated) ArrowLife.Dispose();
+            if (ArrowDamage.IsCreated) ArrowDamage.Dispose();
+            if (ArrowId.IsCreated) ArrowId.Dispose();
+            if (ArrowSpawnTick.IsCreated) ArrowSpawnTick.Dispose();
+            if (ArrowEnd.IsCreated) ArrowEnd.Dispose();
+            if (_arrowNextId.IsCreated) _arrowNextId.Dispose();
             if (CellStart.IsCreated) CellStart.Dispose();
             if (_cellCursor.IsCreated) _cellCursor.Dispose();
             if (CellItems.IsCreated) CellItems.Dispose();
@@ -580,6 +731,7 @@ namespace KnifeWar.Core
         [ReadOnly] public NativeArray<byte> PlayerAlive;
         [ReadOnly] public NativeArray<byte> PlayerKing;
         public NativeArray<int> TargetPlayer;
+        [ReadOnly] public NativeArray<int> Windup;
 
         public void Execute(int m)
         {
@@ -588,6 +740,14 @@ namespace KnifeWar.Core
                 Target[m] = -1;
                 TargetPlayer[m] = -1;
                 StateChanged[m] = 0;
+                return;
+            }
+            if (Windup[m] > 0)
+            {
+                // 준비 동작 중: 대상을 바꾸지 않고 그 자리에서 (취소는 DamageJob·ApplyDamage 가)
+                byte w = (byte)MonsterState.Windup;
+                StateChanged[m] = w != State[m] ? (byte)1 : (byte)0;
+                State[m] = w;
                 return;
             }
 
@@ -712,9 +872,14 @@ namespace KnifeWar.Core
     struct DamageJob : IJob
     {
         public int Capacity;
+        public int Tick;
+        public LaneConfig Lane;
         [ReadOnly] public NativeArray<MonsterDef> Defs;
         [ReadOnly] public NativeArray<byte> Alive;
         [ReadOnly] public NativeArray<byte> Type;
+        [ReadOnly] public NativeArray<byte> Team;
+        [ReadOnly] public NativeArray<int> Pos;
+        [ReadOnly] public NativeArray<short> Lat;
         [ReadOnly] public NativeArray<int> Target;
         [ReadOnly] public NativeArray<int> TargetPlayer;
         [ReadOnly] public NativeArray<byte> StateChanged;
@@ -722,32 +887,98 @@ namespace KnifeWar.Core
         public NativeArray<int> Cooldown;
         public NativeArray<int> Counters;
         public NativeArray<int> PlayerDamage;
+        public int PlayerCount;
+        [ReadOnly] public NativeArray<int> PlayerPos;
+        [ReadOnly] public NativeArray<int> PlayerLat;
+        [ReadOnly] public NativeArray<byte> PlayerTeam;
+        [ReadOnly] public NativeArray<byte> PlayerAlive;
+        public NativeArray<int> Windup;
+        public NativeArray<int> WindupPlayer;
+        public NativeArray<byte> ArrowAlive;
+        public NativeArray<byte> ArrowTeam;
+        public NativeArray<int> ArrowPos, ArrowLat, ArrowVx, ArrowVy, ArrowLife, ArrowDamage, ArrowId, ArrowSpawnTick;
+        public NativeArray<byte> ArrowEnd;
+        public NativeArray<int> ArrowNextId;
 
         public void Execute()
         {
             int hpEvents = 0;
             int stateEvents = 0;
 
+            // 1) 화살 비행 + 명중 (플레이어만). 느려서 틱당 이동이 플레이어 반지름보다 작다 → 점 검사로 충분
+            for (int i = 0; i < MonsterSim.MaxArrows; i++)
+            {
+                if (ArrowAlive[i] == 0) continue;
+                ArrowPos[i] += ArrowVx[i];
+                ArrowLat[i] += ArrowVy[i];
+                if (--ArrowLife[i] <= 0 || ArrowPos[i] < 0 || ArrowPos[i] > Lane.LengthMm)
+                {
+                    ArrowAlive[i] = 0; ArrowEnd[i] = ArrowEndReason.Expired;
+                    continue;
+                }
+                int enemy = 1 - ArrowTeam[i];
+                long hr = MonsterSim.PlayerRadiusMm + 100;
+                for (int p = 0; p < PlayerCount; p++)
+                {
+                    if (PlayerAlive[p] == 0 || PlayerTeam[p] != enemy) continue;
+                    long dx = PlayerPos[p] - ArrowPos[i], dy = PlayerLat[p] - ArrowLat[i];
+                    if (dx * dx + dy * dy <= hr * hr)
+                    {
+                        PlayerDamage[p] = PlayerDamage[p] + ArrowDamage[i];
+                        ArrowAlive[i] = 0; ArrowEnd[i] = ArrowEndReason.Hit;
+                        hpEvents++;
+                        break;
+                    }
+                }
+            }
+
+            // 2) 몬스터 공격
             for (int m = 0; m < Capacity; m++)
             {
                 if (Alive[m] == 0) continue;
                 if (StateChanged[m] != 0) stateEvents++;
+                if (Hp[m] <= 0) continue;                 // 이번 틱에 이미 죽은 몬스터는 공격 못 함
+                var def = Defs[Type[m]];
+
+                // 준비 동작 진행: 끝나는 틱에 아직 사거리 안이면 맞춘다 (벗어났으면 헛침)
+                if (Windup[m] > 0)
+                {
+                    int left = Windup[m] - 1;
+                    Windup[m] = left;
+                    if (left > 0) continue;
+                    int wp = WindupPlayer[m];
+                    WindupPlayer[m] = -1;
+                    Cooldown[m] = def.AttackIntervalTicks;
+                    if (wp < 0 || wp >= PlayerCount || PlayerAlive[wp] == 0) continue;
+                    if (def.IsRanged)
+                    {
+                        FireArrow(m, wp, def);
+                        continue;
+                    }
+                    long dx = PlayerPos[wp] - Pos[m], dy = (PlayerLat[wp] - Lat[m]) / 2;
+                    long r = def.AttackRangeMm + def.RadiusMm + MonsterSim.PlayerRadiusMm + 150;   // 약간의 여유 (휘두르는 폭)
+                    if (dx * dx + dy * dy <= r * r)
+                    {
+                        PlayerDamage[wp] = PlayerDamage[wp] + def.AttackDamage;
+                        hpEvents++;
+                    }
+                    continue;
+                }
 
                 int t = Target[m];
                 int tp = TargetPlayer[m];
                 if ((t < 0 && tp < 0) || Cooldown[m] != 0) continue;
-                if (Hp[m] <= 0) continue;                 // 이번 틱에 이미 죽은 몬스터는 공격 못 함
 
-                var def = Defs[Type[m]];
                 if (t < 0)
                 {
-                    PlayerDamage[tp] = PlayerDamage[tp] + def.AttackDamage;
-                    Cooldown[m] = def.AttackIntervalTicks;
-                    hpEvents++;
+                    // 플레이어: 바로 때리지 않고 준비 동작부터 (확정타 없음)
+                    Windup[m] = def.WindupTicks;
+                    WindupPlayer[m] = tp;
                     continue;
                 }
                 if (Alive[t] == 0 || Hp[t] <= 0) continue;
 
+                // 몬스터끼리는 바로 (화면에 큰 의미 없고 계산만 늘어남)
                 Hp[t] = Hp[t] - def.AttackDamage;
                 Cooldown[m] = def.AttackIntervalTicks;
                 hpEvents++;
@@ -755,6 +986,40 @@ namespace KnifeWar.Core
 
             Counters[SimCounter.HpEvents] = Counters[SimCounter.HpEvents] + hpEvents;
             Counters[SimCounter.StateEvents] = Counters[SimCounter.StateEvents] + stateEvents;
+        }
+
+        /// <summary>정수 제곱근 (내림) — float 없이 결정적.</summary>
+        static long IntSqrt(long v)
+        {
+            if (v <= 0) return 0;
+            long x = (long)math.sqrt((float)v);
+            while (x * x > v) x--;
+            while ((x + 1) * (x + 1) <= v) x++;
+            return x;
+        }
+
+        /// <summary>궁수: 지금 플레이어가 있는 곳을 향해 직선으로 (정수 계산, 결정적). 빈 화살 칸이 없으면 쏘지 못한다.</summary>
+        void FireArrow(int m, int wp, in MonsterDef def)
+        {
+            int s = -1;
+            for (int i = 0; i < MonsterSim.MaxArrows; i++) if (ArrowAlive[i] == 0 && ArrowEnd[i] == 0) { s = i; break; }
+            if (s < 0) return;
+            long dx = PlayerPos[wp] - Pos[m], dy = PlayerLat[wp] - Lat[m];
+            long len = IntSqrt(dx * dx + dy * dy);
+            if (len < 1) len = 1;
+            int speed = def.ProjectileMmPerTick;
+            ArrowAlive[s] = 1;
+            ArrowTeam[s] = Team[m];
+            ArrowPos[s] = Pos[m];
+            ArrowLat[s] = Lat[m];
+            ArrowVx[s] = (int)(dx * speed / len);
+            ArrowVy[s] = (int)(dy * speed / len);
+            ArrowLife[s] = (int)((long)def.AttackRangeMm * 3 / 2 / speed) + 1;   // 사거리의 1.5배 날아가면 소멸
+            ArrowDamage[s] = def.AttackDamage;
+            ArrowId[s] = ArrowNextId[0];
+            ArrowNextId[0] = ArrowNextId[0] + 1;
+            ArrowSpawnTick[s] = Tick;
+            ArrowEnd[s] = 0;
         }
     }
 

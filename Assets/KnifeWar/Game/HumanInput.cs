@@ -68,6 +68,7 @@ namespace KnifeWar.Game
                 if (GameSettings.Down(Bind.Slot2)) i.Summon = 1;
                 if (GameSettings.Down(Bind.Slot3)) i.Summon = 2;
                 if (GameSettings.Down(Bind.Slot4)) i.Summon = 3;
+                if (GameSettings.Down(Bind.Slot5)) i.Resurrect = true;   // 현현 (마나 100)
                 if (locked)
                 {
                     if (GameSettings.Down(Bind.Slash)) i.Attack = KnifeAttack.Slash;

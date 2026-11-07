@@ -37,8 +37,9 @@ namespace KnifeWar.Game
             }
         }
 
-        public static string Name(int id) => CardDefs.IsValidId(id) ? L.T("card_" + CardDefs.Get(id).Key + "_name") : "";
-        public static string Desc(int id) => CardDefs.IsValidId(id) ? L.T("card_" + CardDefs.Get(id).Key + "_desc") : "";
+        static bool Exists(int id) => CardDefs.IsValidId(id) || id == CardDefs.ResurrectId;
+        public static string Name(int id) => Exists(id) ? L.T("card_" + CardDefs.Get(id).Key + "_name") : "";
+        public static string Desc(int id) => Exists(id) ? L.T("card_" + CardDefs.Get(id).Key + "_desc") : "";
 
         static void EnsureStyles()
         {
@@ -60,7 +61,7 @@ namespace KnifeWar.Game
         public static bool Draw(Rect r, int id, bool affordable = true, string hotkey = null, bool selected = false, float alpha = 1f)
         {
             EnsureStyles();
-            if (!CardDefs.IsValidId(id))
+            if (!Exists(id))
             {
                 Fill(r, new Color(0, 0, 0, 0.35f * alpha));
                 return false;
@@ -73,7 +74,7 @@ namespace KnifeWar.Game
             // 테두리·배경
             Fill(r, new Color(0.92f, 0.85f, 0.6f, (selected ? 1f : 0.85f) * alpha));
             var inner = new Rect(r.x + 3 * k, r.y + 3 * k, r.width - 6 * k, r.height - 6 * k);
-            var bg = KindColor(c.Kind);
+            var bg = id == CardDefs.ResurrectId ? new Color(0.5f, 0.42f, 0.1f) : KindColor(c.Kind);
             Fill(inner, new Color(bg.r * dim, bg.g * dim, bg.b * dim, alpha));
 
             // 제목
@@ -122,14 +123,23 @@ namespace KnifeWar.Game
 
         // ---- 임시 그림 (코드로 그린 아이콘) ----
 
+        static Texture2D _resArt;
+
         public static Texture2D Art(int id)
         {
+            if (id == CardDefs.ResurrectId) { if (_resArt == null) _resArt = Paint(CardDefs.Resurrect); return _resArt; }
             if (!CardDefs.IsValidId(id)) return Texture2D.blackTexture;
             if (_art[id] != null) return _art[id];
+            _art[id] = Paint(CardDefs.Get(id));
+            return _art[id];
+        }
+
+        static Texture2D Paint(in CardDef c)
+        {
+            int id = c.Id;
             const int w = 96, h = 64;
             var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { name = "CardArt_" + id, filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
             var px = new Color[w * h];
-            ref readonly var c = ref CardDefs.Get(id);
             Color sky = c.Kind == CardKind.Field ? new Color(0.3f, 0.08f, 0.05f) : new Color(0.12f, 0.16f, 0.24f);
             Color ground = c.Kind == CardKind.Field ? new Color(0.2f, 0.05f, 0.03f) : new Color(0.2f, 0.26f, 0.18f);
             for (int y = 0; y < h; y++)
@@ -217,6 +227,12 @@ namespace KnifeWar.Game
                     Disc(48, 32, 16, new Color(0.3f, 0.5f, 1f)); Disc(48, 32, 10, new Color(0.6f, 0.8f, 1f));
                     Box(28, 40, 68, 44, new Color(0.45f, 0.3f, 0.2f)); Box(30, 30, 34, 44, new Color(0.45f, 0.3f, 0.2f)); Box(62, 30, 66, 44, new Color(0.45f, 0.3f, 0.2f));
                     break;
+                case "resurrect":   // 금빛 기둥 속에서 일어나는 기사
+                    Box(40, 14, 56, 62, new Color(0.95f, 0.8f, 0.35f, 1f));
+                    Box(44, 14, 52, 62, new Color(1f, 0.95f, 0.7f));
+                    Figure(48, 14, 40, steel, skin);
+                    for (int t = 0; t < 12; t++) Disc(30 + t * 3.2f, 20 + (t % 3) * 14, 1.5f, new Color(1f, 0.9f, 0.5f));
+                    break;
                 default:   // warhorn
                     Tri(20, 20, 76, 44, 76, 14, new Color(0.85f, 0.65f, 0.25f));
                     Disc(76, 29, 10, new Color(0.95f, 0.8f, 0.35f));
@@ -225,7 +241,6 @@ namespace KnifeWar.Game
             }
             tex.SetPixels(px);
             tex.Apply(false, true);
-            _art[id] = tex;
             return tex;
         }
     }

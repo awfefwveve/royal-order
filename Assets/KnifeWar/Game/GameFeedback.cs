@@ -139,6 +139,39 @@ namespace KnifeWar.Game
             Play(_summon, player, 0.45f);
         }
 
+        /// <summary>준비 중인 몬스터를 칼로 쳐서 공격을 취소시킴: 금속 튕김 소리 + "쳐냄!" 숫자 자리 글자.</summary>
+        public void OnParry(int player, float x, float z)
+        {
+            var pos = new Vector3(x, 1.4f, z);
+            if (player == _m.HumanIndex) { _ui.PlayOneShot(_monsterHit, 0.9f); _ui.PlayOneShot(_hit, 0.5f); }
+            else AudioSource.PlayClipAtPoint(_monsterHit, pos, 0.6f * GameSettings.Sfx);
+            AddPopup(pos, L.T("parry"), new Color(1f, 0.9f, 0.45f));
+        }
+
+        /// <summary>화살 발사 / 끝 (쳐냄이면 부서지는 소리 + 글자).</summary>
+        public void OnArrowShot(float x, float z)
+        {
+            AudioSource.PlayClipAtPoint(_swing, new Vector3(x, 1.2f, z), 0.35f * GameSettings.Sfx);
+        }
+
+        public void OnArrowEnd(byte reason, float x, float z)
+        {
+            var pos = new Vector3(x, 1.2f, z);
+            if (reason == ArrowEndReason.Cut)
+            {
+                AudioSource.PlayClipAtPoint(_monsterHit, pos, 0.8f * GameSettings.Sfx);
+                AddPopup(pos, L.T("arrow_cut"), new Color(0.9f, 0.85f, 0.6f));
+            }
+        }
+
+        /// <summary>현현: 되살아난 기사 자리에 소환 소리 + 글자.</summary>
+        public void OnRevive(int player)
+        {
+            Play(_summon, player, 0.8f);
+            var a = _m.Avatars[player];
+            if (a != null) AddPopup(a.transform.position + Vector3.up * 2f, L.T("how_revive"), new Color(1f, 0.85f, 0.3f));
+        }
+
         /// <summary>필드 효과 시작 (볼케이노 등): 낮게 울리는 소리. 배경 연출은 FieldEffects 가 상태를 보고 한다.</summary>
         public void OnField(int team, int fieldId)
         {

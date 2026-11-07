@@ -7,7 +7,7 @@ namespace KnifeWar.Game
     public enum Bind
     {
         Forward, Back, Left, Right, Jump, Crouch, Walk,
-        Slash, Stab, Slot1, Slot2, Slot3, Slot4, Scoreboard,
+        Slash, Stab, Slot1, Slot2, Slot3, Slot4, Slot5, Scoreboard,
     }
 
     /// <summary>
@@ -34,7 +34,7 @@ namespace KnifeWar.Game
         static readonly KeyCode[] Defaults =
         {
             KeyCode.W, KeyCode.S, KeyCode.A, KeyCode.D, KeyCode.Space, KeyCode.LeftControl, KeyCode.LeftShift,
-            KeyCode.Mouse0, KeyCode.Mouse1, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Tab,
+            KeyCode.Mouse0, KeyCode.Mouse1, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5, KeyCode.Tab,
         };
         static readonly KeyCode[] Keys = (KeyCode[])Defaults.Clone();
         public static readonly int[] FpsOptions = { 60, 120, 144, 165, 240, 0 };
