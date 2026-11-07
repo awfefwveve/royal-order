@@ -31,6 +31,9 @@ namespace KnifeWar.Game
         public void Init(MatchController m)
         {
             _m = m;
+            // 헤드리스(-nographics)·그래픽 장치 없음 → 그리지 않음. 인스턴싱 미지원 GPU → 한 마리씩 그림
+            _canDraw = SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null;
+            _instancing = SystemInfo.supportsInstancing;
             var skin = SkinSet.Current;
             _scale = new NativeArray<float3>(Types, Allocator.Persistent);
             _lift = new NativeArray<float>(Types, Allocator.Persistent);
@@ -88,9 +91,11 @@ namespace KnifeWar.Game
             if (_lift.IsCreated) _lift.Dispose();
         }
 
+        bool _canDraw = true, _instancing = true;
+
         void LateUpdate()
         {
-            if (_m == null || _m.Monsters == null || !_out.IsCreated) return;
+            if (_m == null || _m.Monsters == null || !_out.IsCreated || !_canDraw) return;
             var s = _m.Monsters;
             s.Complete();
 
@@ -120,8 +125,16 @@ namespace KnifeWar.Game
                 int count = _counts[g];
                 if (count == 0 || _rp[g].material == null) continue;
                 var mesh = _mesh[g % Types];
-                for (int start = 0; start < count; start += Batch)
-                    Graphics.RenderMeshInstanced(_rp[g], mesh, 0, _out, math.min(Batch, count - start), g * cap + start);
+                if (_instancing)
+                {
+                    for (int start = 0; start < count; start += Batch)
+                        Graphics.RenderMeshInstanced(_rp[g], mesh, 0, _out, math.min(Batch, count - start), g * cap + start);
+                }
+                else
+                {
+                    // 인스턴싱이 안 되는 GPU: 한 마리씩 (느리지만 보이긴 한다)
+                    for (int i = 0; i < count; i++) Graphics.RenderMesh(_rp[g], mesh, 0, _out[g * cap + i]);
+                }
             }
         }
 

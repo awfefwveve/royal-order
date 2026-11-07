@@ -34,6 +34,7 @@ namespace KnifeWar.Net
         readonly ByteWriter _events = new ByteWriter();
         readonly PlayerNetState[] _states = new PlayerNetState[MatchController.MaxPlayers];
         int _correctionCursor;
+        readonly List<int> _corrSlots = new List<int>(NetProtocol.CorrectionsPerSnapshot);   // 매 틱 재사용 (할당 없음)
         bool _rosterDirty;
 
         public int PeerCount => _peers.Count;
@@ -244,7 +245,8 @@ namespace KnifeWar.Net
 
             // 몬스터 위치 보정 (돌아가며 몇 마리씩)
             var sim = _m.Monsters;
-            var corrSlots = new List<int>(NetProtocol.CorrectionsPerSnapshot);
+            var corrSlots = _corrSlots;
+            corrSlots.Clear();
             for (int scanned = 0; scanned < sim.Capacity && corrSlots.Count < NetProtocol.CorrectionsPerSnapshot; scanned++)
             {
                 _correctionCursor = (_correctionCursor + 1) % sim.Capacity;
