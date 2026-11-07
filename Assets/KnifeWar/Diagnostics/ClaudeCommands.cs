@@ -94,6 +94,9 @@ namespace KnifeWar.Diagnostics
                     }
                     switch (cmd)
                     {
+                        case "sysinfo":
+                            Debug.Log($"[claude-cmd] GPU {SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsMemorySize}MB, {SystemInfo.graphicsDeviceType}) / CPU {SystemInfo.processorType} x{SystemInfo.processorCount} / RAM {SystemInfo.systemMemorySize}MB / OS {SystemInfo.operatingSystem}");
+                            break;
                         case "refresh":
                             AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
                             break;
