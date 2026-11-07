@@ -92,26 +92,26 @@ namespace KnifeWar.Game
             }
         }
 
-        /// <summary>성 1층 홀 양옆 (다리 폭 밖, z ±7.5)에 병영/우물 모형.</summary>
+        /// <summary>성 1층 홀 양옆 띠 (다리 폭 밖 z ±7.4, 경사로 전 x 60.9~63.9)에 병영(+z)/우물(-z) 모형.</summary>
         GameObject Build(int team, int type, int index)
         {
             float side = team == 0 ? -1f : 1f;
-            float z = (type == BuildingType.Barracks ? 1f : -1f) * (MapLayout.CastleHalfWidth - 1.6f) * (index % 2 == 0 ? 1f : -1f);
-            float x = side * (MapLayout.GateX + 1.6f + index * 1.9f);
+            float z = (type == BuildingType.Barracks ? 1f : -1f) * (MapLayout.CastleHalfWidth - 1.6f);
+            float x = side * (type == BuildingType.Barracks ? MapLayout.GateX + 0.9f + index * 1.5f : MapLayout.GateX + 1.2f + index * 1.9f);
             var root = new GameObject(type == BuildingType.Barracks ? "Barracks" : "ManaWell");
             root.transform.position = new Vector3(x, 0f, z);
             if (type == BuildingType.Barracks)
             {
-                ProceduralParts.Box("Walls", root.transform, new Vector3(0f, 0.6f, 0f), new Vector3(1.6f, 1.2f, 1.6f), _wood);
-                var roof = ProceduralParts.Box("Roof", root.transform, new Vector3(0f, 1.45f, 0f), new Vector3(1.9f, 0.5f, 1.9f), ProceduralMaterials.Cloth(team));
+                ProceduralParts.Box("Walls", root.transform, new Vector3(0f, 0.55f, 0f), new Vector3(1.3f, 1.1f, 1.3f), _wood);
+                var roof = ProceduralParts.Box("Roof", root.transform, new Vector3(0f, 1.3f, 0f), new Vector3(1.4f, 0.4f, 1.4f), ProceduralMaterials.Cloth(team));
                 roof.transform.localRotation = Quaternion.Euler(0f, 45f, 0f);
-                ProceduralParts.Box("Flag", root.transform, new Vector3(0f, 2.3f, 0f), new Vector3(0.05f, 1.2f, 0.05f), _stone);
-                ProceduralParts.Box("Banner", root.transform, new Vector3(0.25f, 2.65f, 0f), new Vector3(0.5f, 0.3f, 0.02f), ProceduralMaterials.Cloth(team));
+                ProceduralParts.Box("Flag", root.transform, new Vector3(0f, 2.1f, 0f), new Vector3(0.05f, 1.2f, 0.05f), _stone);
+                ProceduralParts.Box("Banner", root.transform, new Vector3(0.22f, 2.45f, 0f), new Vector3(0.45f, 0.28f, 0.02f), ProceduralMaterials.Cloth(team));
             }
             else
             {
-                ProceduralParts.Prim(PrimitiveType.Cylinder, "Rim", root.transform, new Vector3(0f, 0.35f, 0f), new Vector3(1.4f, 0.35f, 1.4f), Quaternion.identity, _stone);
-                ProceduralParts.Prim(PrimitiveType.Cylinder, "Water", root.transform, new Vector3(0f, 0.6f, 0f), new Vector3(1.1f, 0.05f, 1.1f), Quaternion.identity, _water);
+                ProceduralParts.Prim(PrimitiveType.Cylinder, "Rim", root.transform, new Vector3(0f, 0.35f, 0f), new Vector3(1.2f, 0.35f, 1.2f), Quaternion.identity, _stone);
+                ProceduralParts.Prim(PrimitiveType.Cylinder, "Water", root.transform, new Vector3(0f, 0.6f, 0f), new Vector3(0.95f, 0.05f, 0.95f), Quaternion.identity, _water);
                 ProceduralParts.Box("PostA", root.transform, new Vector3(-0.6f, 1.2f, 0f), new Vector3(0.1f, 1.4f, 0.1f), _wood);
                 ProceduralParts.Box("PostB", root.transform, new Vector3(0.6f, 1.2f, 0f), new Vector3(0.1f, 1.4f, 0.1f), _wood);
                 ProceduralParts.Box("Beam", root.transform, new Vector3(0f, 1.95f, 0f), new Vector3(1.5f, 0.12f, 0.3f), _wood);

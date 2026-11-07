@@ -85,6 +85,13 @@ namespace KnifeWar.Net
                 yield return CamShot("king_summon", kp - fwd * 3.2f + Vector3.up * 2.4f + Vector3.forward * 0.8f, kp + fwd * 10f + Vector3.up * 0.6f, 70f);
             }
 
+            // 우리 성 (다리에서 성문 쪽으로) + 2층 왕의 방
+            {
+                float side = _m.Human.Team == 0 ? -1f : 1f;
+                yield return CamShot("castle_gate", new Vector3(side * 38f, 7f, -16f), new Vector3(side * 68f, 3f, 0f), 60f);
+                yield return CamShot("castle_hall", new Vector3(side * 70f, MapLayout.Floor2Y + 2.2f, 7f), new Vector3(side * 74f, MapLayout.Floor2Y + 0.9f, 0f), 65f);
+            }
+
             // 전체 모습 (위에서) + 점수판: 라운드 중일 때 먼저
             yield return Overview("overview_bridge");
             GameHud.ForceScoreboard = true;
